@@ -1,14 +1,11 @@
 # DeepRibo
 
-----
-
 DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python using the PyTorch library.
 
 # Installation
 
 To use DeepRibo, simply clone this repository in your working directory and install the necessary libraries:
 
-**TODO**:
 `conda env create -f environment.yml
 ` 
 
@@ -48,7 +45,6 @@ The function will create two files for each ORF present in te genome. `*_seq.npy
 
 ----
 
-## Training
 
 
 
