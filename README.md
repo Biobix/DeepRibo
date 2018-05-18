@@ -1,13 +1,14 @@
 # DeepRibo
 
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python using the PyTorch library. It is stronly recommended to use GPU's for the use of DeepRibo.
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. It is stronly recommended to use GPU's for the use of DeepRibo.
 
 # Installation
 
 To use DeepRibo, simply clone this repository in your working directory and install the necessary libraries:
 
-`conda env create -f environment.yml
-` 
+	git clone https://github.com/Biobix/DeepRibo.git
+	conda env create -f environment.yml
+ 
 
 # User Guide
 
@@ -52,20 +53,27 @@ After all data has been processed, a model can be trained. Any or all datasets p
 
 `python DeepRibo.py train -h`
 
-During training, the model's weights are saved after each epoch. A json object is furthermore created after training containing all of the performance metrics for the training/testing data. These performance metrics include the loss, acceracy, Area Under the Roc Curve (AUC-ROC) and Area under the Precision-Recall Curve (PR-AUC). When training the model, cut-off values for both the training data and test data, based upon the minimal coverage and RPKM values of each sample, are given to filter out data with low to non-existent signal (see [Full Article](.)). two cut-off values have to be given for each dataset used for training/testing, and are required to be in the same order. To obtain the right values for each dataset, an R script is provided which uses the `SiZer` package. The function `get_cutoff_values` is listed in `src/s_curve_cutoff_estimation.R`. Simply run the script with the required parameters to obtain these values after parsing the data.
+During training, the model's weights are saved after each epoch. A json object is furthermore created after training containing all of the performance metrics for the training/testing data. These performance metrics include the loss, acceracy, Area Under the Roc Curve (AUC-ROC) and Area under the Precision-Recall Curve (PR-AUC). When training the model, cut-off values for both the training data and test data, based upon the minimal coverage and RPKM values of each sample, are given to filter out data with low to non-existent signal (see [Full Article](.)). two cut-off values have to be given for each dataset used for training/testing, and are required to be in the same order. To obtain the right values for each dataset, an R script is provided which uses the SiZer package. The function `get_cutoff_values` is listed in `src/s_curve_cutoff_estimation.R`. Simply run the script with the required parameters to obtain these values after parsing the data.
 
 	# start R	
 	R
 	# load the functions from the script
-	source('s_curve_cutoff_estimation.R')
+	>source('s_curve_cutoff_estimation.R')
 	# list the dataset and the path to which the png figure is stored
-	get_cutoff_values(path="../../data/processed/ecoli/data_list.csv", dest="figure")
+	>get_cutoff_values(path="../../data/processed/<your data>/data_list.csv", dest="figure")
+	$min_RPKM
+	  ....
+	$min_coverage
+       	  ....
+
  
 # Making predictions 
 
-Once a model has been trained 
-The output file is an extension of the `data_list.csv` file created when parsing the data. For more information about each column check the **Supplementary Information and Figures** from the [Online Article](.)
+Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
 
+``python DeepRibo.py predict -h`
+
+The output file is an extension of the `data_list.csv` file created when parsing the data. For more information about each column check the **Supplementary Information and Figures** from the [Online Article](.)
 
 # Pretrained models
 
@@ -91,5 +99,4 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 **DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model 
 ### Predicting with a model
 
-`python DeepRibo.py predict -data_path ../data/processed -test_data bacillus -pr 0 -pc 0 -model model/my_model.pt -dest ../data/processed/bacillus/my_model_bac_pred.csv --GPU`
-
+`python DeepRibo.py predict ../data/processed --pred_data bacillus -pr 0 -pc 0 --model ../models/my_model_5.pt --dest ../data/processed/bacillus/my_model_bac_pred.csv`

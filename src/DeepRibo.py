@@ -9,13 +9,7 @@ from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
-from functions import FitModule, default_collate, logger, Adam, extend_lib
-s_curve_dict = {"bac": (0.003447865*82.465153, 0.10),
-                "sau": (0.043717797*8.576148, 0.12),
-                "sal": (0.004607822*57.277894, 0.11),
-                "cre": (0.045049202*5.537422, 0.11),
-                "coe": (0.077304740*3.527902, 0.12),
-                "eco": (0.001911246*69.846616, 0.07)}
+from functions import FitModule, default_collate, Logger, Adam, extend_lib
 
 
 class CustomLoader(Dataset):
@@ -137,7 +131,8 @@ class DualComplex(FitModule):
         return x, hidden
 
 
-def load_database(data_path, data, cutoff, batch_size, pin_memory=False, test=False):
+def load_database(data_path, data, cutoff, batch_size, pin_memory=False,
+                  test=False):
     """Loads data using a custom loader
 
     Arguments:
@@ -170,8 +165,8 @@ def load_database(data_path, data, cutoff, batch_size, pin_memory=False, test=Fa
     return loader
 
 
-def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff, dest, batch_size,
-                epochs, GPU):
+def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
+                dest, batch_size, epochs, GPU):
     """Trains the model using DeepRibo methodology
 
     Arguments:
@@ -208,98 +203,132 @@ def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff, des
     # create weighted loss (heavily imbalanced data)
     ratio = sum(train_loader.dataset.y_train)/len(train_loader.dataset.y_train)
     weights = torch.FloatTensor([ratio, 1-ratio]).type(dtype)
-    # initialize model 
-    model = DualComplex(batch_size, hidden_size, 2, True)
+    # initialize model
+    model = DualComplex(hidden_size, 2, True)
     model.type(dtype)
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
     scheduler = StepLR(optimizer, 10, gamma=0.1)
     # key under which performance measures are saved
     test_keys = ["test_data"]
-    # record loss, accuracy, AUC, PR-AUC on test set 
-    log = logger(["loss", "AUC", "P-R", "acc"], False, test_keys)
+    # record loss, accuracy, AUC, PR-AUC on test set
+    log = Logger(["loss", "AUC", "P-R", "acc"], False, test_keys)
     # train the model
     model.fit(train_loader, valid_loaders=[test_loader], valid_keys=test_keys,
               scheduler=scheduler, epochs=epochs, loss=loss,
-              optimizer=optimizer, log=log, dest=dest, HYBRID=True, GPU=GPU)
+              optimizer=optimizer, log=log, dest=dest, GPU=GPU)
 
 
-def predict(data_path, test_data, test_cutoff, model_name, dest, batch_size, GPU):
+def predict(data_path, test_data, test_cutoff, model_name, dest, batch_size,
+            GPU):
     hidden_size = 128
 
-    test_loader = load_database(data_path, test_data, test_cutoff, batch_size, True)
-    model = DualComplex(batch_size, hidden_size, 2, True)
+    test_loader = load_database(data_path, test_data, test_cutoff, batch_size,
+                                True)
+    model = DualComplex(hidden_size, 2, True)
 
     model.load_state_dict(torch.load(model_name))
-    pred, true = model.predict(test_loader, HYBRID=True, GPU=GPU)
+    pred, true = model.predict(test_loader, GPU=GPU)
     df_pred = extend_lib(test_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 
+
 class ParseArgs(object):
 
-    def __init__(self):
-        parser = argparse.ArgumentParser(
-                    description='Tool for training/using models',
-                    usage='''DeepRibo.py <command> [<args>]
+        def __init__(self):
+            parser = argparse.ArgumentParser(
+                        description='Tool for training/using models',
+                        usage='''DeepRibo.py <command> [<args>]
 
-         Commands:
-           train     Train a model using parsed data
-           predict   Make predictions using a trained model
-        ''')
-        parser.add_argument('command', help='Subcommand to run')
-        args = parser.parse_args(sys.argv[1:2])
-        if not hasattr(self, args.command):
-            print('Unrecognized command')
-            parser.print_help()
-            exit(1)
-        # use dispatch pattern to invoke method with same name
-        getattr(self, args.command)()
+             Commands:
+               train     Train a model using parsed data
+               predict   Make predictions using a trained model
+            ''')
+            parser.add_argument('command', help='Subcommand to run')
+            args = parser.parse_args(sys.argv[1:2])
+            if not hasattr(self, args.command):
+                print('Unrecognized command')
+                parser.print_help()
+                exit(1)
+            # use dispatch pattern to invoke method with same name
+            getattr(self, args.command)()
 
-    def train(self):
-        parser = argparse.ArgumentParser(
-                        description='Train a model')
-        # TWO argvs, ie the command (git) and the subcommand (commit)
-        parser.add_argument('data_path', type=str,
-                            help="path containing the data folders for training and testing")
-        parser.add_argument('--train_data', default='[]', nargs='+', type=str, required=True,
-                            help="train data folder names present in the data path")
-        parser.add_argument('--test_data', nargs='*', type=str,
-                            help="test data folder names present in the data path")
-        parser.add_argument('-r', '--tr_rpkm', nargs='+', type=float, required=True,
-                            help="minimum cutoff of RPKM values to filter the training data")
-        parser.add_argument('-c', '--tr_cov', nargs='+', type=float, required=True, help="minimum cutoff of coverage values to filter the training data")
-        parser.add_argument('-tr', '--te_rpkm', nargs='*', type=float, help="minimum cutoff of RPKM values to filter the testing data")
-        parser.add_argument('-tc', '--te_cov', nargs='*', type=float, help="minimum cutoff of coverage values to filter the testing data")
-        parser.add_argument('-d', '--dest', default='pred', type=str, help="path to which the model is saved")
-        parser.add_argument('-b', '--batch_size', type=int, default=32,
-                            help="training batch size")
-        parser.add_argument('-e', '--epochs', default=25, type=int,
-                            help="training epochs")
-        parser.add_argument('--GPU', action="store_true", help="training using GPU (RECOMMENDED)")
-        args = parser.parse_args(sys.argv[2:])
-        print('Training a model with parameters: {}'.format(args))
-        train_model(args.data_path, args.train_data, args.test_data, (args.tr_rpkm, args.tr_cov), (args.te_rpkm, args.te_cov), args.dest, args.batch_size, args.epochs, args.GPU)
+        def train(self):
+            parser = argparse.ArgumentParser(
+                            description='Train a model')
+            # TWO argvs, ie the command (git) and the subcommand (commit)
+            parser.add_argument('data_path', type=str,
+                                help="path containing the data folders for "
+                                "training and testing")
+            parser.add_argument('--train_data', default='[]', nargs='+',
+                                type=str, required=True, help="train data "
+                                "folder names present in the data path")
+            parser.add_argument('--test_data', nargs='*', type=str,
+                                help="test data folder names present in the "
+                                "data path")
+            parser.add_argument('-r', '--tr_rpkm', nargs='+', type=float,
+                                required=True,
+                                help="minimum cutoff of RPKM values to filter "
+                                "the training data")
+            parser.add_argument('-c', '--tr_cov', nargs='+', type=float,
+                                required=True, help="minimum cutoff of"
+                                "coverage values to filter the training data"
+                                ", these are given in the same order.")
+            parser.add_argument('-tr', '--te_rpkm', nargs='*', type=float,
+                                help="minimum cutoff of RPKM values to filter "
+                                "the testing data"
+                                ", these are given in the same order.")
+            parser.add_argument('-tc', '--te_cov', nargs='*', type=float,
+                                help="minimum cutoff of coverage values to "
+                                "filter the testing data"
+                                ", these are given in the same order.")
+            parser.add_argument('-d', '--dest', default='pred', type=str,
+                                help="path to which the model is saved")
+            parser.add_argument('-b', '--batch_size', type=int, default=32,
+                                help="training batch size")
+            parser.add_argument('-e', '--epochs', default=25, type=int,
+                                help="training epochs")
+            parser.add_argument('--GPU', action="store_true", help="training "
+                                "using GPU (RECOMMENDED)")
+            args = parser.parse_args(sys.argv[2:])
+            print('Training a model with parameters: {}'.format(args))
+            train_model(args.data_path, args.train_data, args.test_data,
+                        (args.tr_rpkm, args.tr_cov),
+                        (args.te_rpkm, args.te_cov), args.dest,
+                        args.batch_size, args.epochs, args.GPU)
 
-    def predict(self):
-        parser = argparse.ArgumentParser(
-                    description='Create predictions using a trained model')
-        parser.add_argument('data_path', type=str,
-                            help="path containing the data folders for predictions")
-        parser.add_argument('--pred_data', nargs='*', type=str,
-                            help="data folder names present in the data path from which to obtain predictions")
-        parser.add_argument('-pr', '--pr_rpkm', nargs='+', type=float, required=True,
-                            help="minimum cutoff of RPKM values to filter the data used for predictions")
-        parser.add_argument('-pc', '--pr_cov', nargs='+', type=float,
-                            required=True, help="minimum cutoff of coverage values to filter the data used for predictions")
-        parser.add_argument('-m', '--model', type=str, required=True,
-                            help="path to the model used for predictions")
-        parser.add_argument('-d', '--dest', default='pred', type=str,
-                            required=True, help="path to file in which "
-                            "predictions are saved")
-        parser.add_argument('--GPU', action="store_true", help="training using GPU (RECOMMENDED)")
-        args = parser.parse_args(sys.argv[2:])
-        print('Creating predictions using model {}'.format(args.model))
-        predict(args.data_path, args.pred_data, (args.pr_rpkm, args.pr_cov), args.model, args.dest, args.GPU)
+        def predict(self):
+            parser = argparse.ArgumentParser(
+                        description='Create predictions using a trained model')
+            parser.add_argument('data_path', type=str,
+                                help="path containing the data folders for"
+                                " predictions")
+            parser.add_argument('--pred_data', type=str, required=True,
+                                help="data folder name present in the data "
+                                "path used to make predictions on")
+            parser.add_argument('-pr', '--pr_rpkm',  type=float,
+                                required=True, help="minimum cutoff of RPKM "
+                                "value to filter the data used for "
+                                "predictions.")
+            parser.add_argument('-pc', '--pr_cov', nargs='+', type=float,
+                                required=True, help="minimum cutoff of "
+                                "coverage value to filter the data used for "
+                                "predictions order")
+            parser.add_argument('-m', '--model', type=str, required=True,
+                                help="path to the model used for predictions")
+            parser.add_argument('-d', '--dest', default='pred', type=str,
+                                required=True, help="path to file in which "
+                                "predictions are saved")
+            parser.add_argument('-b', '--batch_size', type=int, default=32,
+                                help="training batch size")
+            parser.add_argument('--GPU', action="store_true",
+                                help="training using GPU (RECOMMENDED)")
+            args = parser.parse_args(sys.argv[2:])
+            print('Creating predictions using model {}'.format(args.model))
+            predict(args.data_path, [args.pred_data],
+                    ([args.pr_rpkm], [args.pr_cov]), args.model,
+                    args.dest, args.batch_size, args.GPU)
+
 
 if __name__ == "__main__":
     sys.exit(ParseArgs())
