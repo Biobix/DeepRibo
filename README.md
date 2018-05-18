@@ -96,7 +96,7 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 `python DeepRibo.py train ../data/processed --train_data ecoli salmonella --test_data bacillus --tr_rpkm 0.0 0.0 --tr_cov 0.0 0.0 --te_rpkm 0.0 --te_cov 0.0 --dest models/my_model.pt -b 16 --GPU`
 
-**DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model. Notice how the flags for minimum RPKM `--tr_rpkm` and coverage `tr_cov` for the training data have listed two sequential values, each representing the dataset listed by `--train_data` according to their given rank.
+**DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model. Notice how the flags for minimum RPKM `--tr_rpkm` and coverage `tr_cov` for the training data have listed two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
 
 ### Predicting with a model
 
