@@ -71,7 +71,7 @@ During training, the model's weights are saved after each epoch. A json object i
 
 Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
 
-``python DeepRibo.py predict -h`
+`python DeepRibo.py predict -h`
 
 The output file is an extension of the `data_list.csv` file created when parsing the data. For more information about each column check the **Supplementary Information and Figures** from the [Online Article](.)
 
@@ -81,7 +81,7 @@ All six models discussed in the [Full Article](.) are located in `models/`, and 
 
 
 # Code Examples
-These code examples will work with the data present if executed sequentially
+These code examples will work with the data present if executed sequentially. The given data is incomplete and should be considered solely for the execution of the Code Examples
 
 ### parsing the data
 Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
@@ -96,7 +96,8 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 `python DeepRibo.py train ../data/processed --train_data ecoli salmonella --test_data bacillus --tr_rpkm 0.0 0.0 --tr_cov 0.0 0.0 --te_rpkm 0.0 --te_cov 0.0 --dest models/my_model.pt -b 16 --GPU`
 
-**DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model 
+**DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model. Notice how the flags for minimum RPKM `--tr_rpkm` and coverage `tr_cov` for the training data have listed two sequential values, each representing the dataset listed by `--train_data` according to their given rank.
+
 ### Predicting with a model
 
 `python DeepRibo.py predict ../data/processed --pred_data bacillus -pr 0 -pc 0 --model ../models/my_model_5.pt --dest ../data/processed/bacillus/my_model_bac_pred.csv`
