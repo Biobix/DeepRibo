@@ -111,7 +111,11 @@ def auc_from_tensors(y_hat, y_true):
 
 
 def default_collate(batch):
-    'Puts each data field into a tensor with outer dimension batch size'
+    '''Puts each data field into a tensor with outer dimension batch size'
+    code copied from
+    https://pytorch.org/docs/master/_modules/torch/utils/data/dataloader.html#DataLoader
+    and tweaked for personal use'''
+
 
     error_msg = 'batch must contain tensors, numbers, dicts or lists; found {}'
     _use_shared_memory = True
@@ -172,6 +176,14 @@ def default_collate(batch):
 
 
 def extend_lib(df, pred):
+    '''Function that uses the predictions to extend the data_list.csv object
+    of a given dataset
+
+    Attributes:
+        df (DataFrame): dataframe containing data_list.csv table created by
+            DataParser.py
+        pred (numpy array): output array produced by the neural network
+    '''
     df = df.copy()
     df['label'] = df['label'].values.astype(bool)
     df['in_gene'] = df['in_gene'].values.astype(bool)
@@ -213,56 +225,38 @@ def extend_lib(df, pred):
 
 class FitModule(Module):
 
-    def fit(self,
-            train_loader,
-            test_loader=None,
-            valid_loaders=None,
-            valid_keys=None,
-            scheduler=None,
-            epochs=1,
-            initial_epoch=0,
-            seed=None,
-            loss=None,
-            optimizer=None,
-            custom_metric=None,
-            log=None,
-            dest='default',
-            verbose=1,
-            RNN=False,
-            HYBRID=False,
-            GPU=False):
+    def fit(self, train_loader, test_loader=None, valid_loaders=None,
+            valid_keys=None, scheduler=None, epochs=50, initial_epoch=0,
+            seed=None, loss=None, optimizer=None, log=None, dest='default',
+            verbose=1, GPU=False):
         '''Trains the model similar to Keras' .fit(...) method
 
-        # Arguments
-            X: training data Tensor.
-            y: target data Tensor.
-            batch_size: integer. Number of samples per gradient update.
-            epochs: integer, the number of times to iterate
-                over the training data arrays.
-            verbose: 0, 1. Verbosity mode.
-                0 = silent, 1 = verbose.
-            test_split: float between 0 and 1:
-                fraction of the training data to be used as test data.
-                The model will set apart this fraction of the training data,
-                will not train on it, and will evaluate
-                the loss and any model metrics
-                on this data at the end of each epoch.
-            test_data: (x_test, y_test) tuple on which to evaluate
-                the loss and any model metrics
-                at the end of each epoch. The model will not
-                be trained on this data.
-            shuffle: boolean, whether to shuffle the training data
-                before each epoch.
-            initial_epoch: epoch at which to start training
+        Arguments:
+            train_loader (DataLoader): data loader for training
+            test_loader (DataLoader): data loader for testing
+            valid_loaders (list): list containing DataLoader objects
+                which are all used for validation at the end of an
+                epoch of training
+            valid_keys (list): list containing labels for each of
+                the valid_loaders
+            scheduler (object): object used for gradational decrease
+                of the learning stop during training
+            epochs (int): training epochs (default: 50)
+            initial_epoch (int): epoch at which to start training
                 (useful for resuming a previous training run)
-            seed: random seed.
-            optimizer: training optimizer
-            loss: training loss
-            metrics: list of functions with signatures `metric(y_true, y_pred)`
-                where y_true and y_pred are both Tensors
+                over the training data arrays.
+            seed (int): random seed.
+            loss (object): training loss
+            optimizer (object): training optimizer
+            log (Logger object): Logger object with which training/testing
+                metrics are processed/saved
+            dest (string): path to which trained model weights are saved
+            verbose (0,1): verbosity mode; 0 = silent, 1 = verbose
+            GPU (bool): trains using a GPU
 
-        # Returns
-            list of OrderedDicts with training metrics
+
+        Returns:
+            Logger object with training metrics
         '''
         if seed and seed >= 0:
             torch.manual_seed(seed)
@@ -281,7 +275,7 @@ class FitModule(Module):
             if scheduler:
                 scheduler.step()
             print('Epoch {0} / {1}'.format(t+1, epochs))
-            # Setup logger
+            # Setup Logger
             if verbose:
                 pb = ProgressBar(len(train_loader))
             epoch_loss = 0.0
@@ -289,28 +283,19 @@ class FitModule(Module):
             for batch_i, b_data in enumerate(train_loader):
                 # Backprop
                 opt.zero_grad()
-                if HYBRID:
-                    X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                             descending=True)
-                    y_batch = Variable(b_data[2][sort_order].type(dtypeY))
-                    X_batch_conv = Variable(b_data[0][sort_order]
-                                            .type(dtypeX).transpose_(0, 1))
-                    X_batch_RNN = Variable(b_data[1][0][sort_order]
-                                           .type(dtypeX).transpose_(0, 1))
-                    X_batch_RNN_len = list(b_data[1][1][sort_order])
-                    X_batch_RNN = pack_padded_sequence(X_batch_RNN,
-                                                       X_batch_RNN_len)
-                    y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
 
-                elif RNN:
-                    y_batch = Variable(b_data[1].type(dtypeY))
-                    X_batch = Variable(b_data[0].type(dtypeX).transpose_(0, 1))
-                    hidden = self.init_hidden(len(X_batch[0]), dtypeX)
-                    y_batch_pred, hidden = self(X_batch, hidden)
-                else:
-                    y_batch = Variable(b_data[1].type(dtypeY))
-                    X_batch = Variable(b_data[0].type(dtypeX))
-                    y_batch_pred = self(X_batch)
+                X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
+                                                         descending=True)
+                y_batch = Variable(b_data[2][sort_order].type(dtypeY))
+                X_batch_conv = Variable(b_data[0][sort_order]
+                                        .type(dtypeX).transpose_(0, 1))
+                X_batch_RNN = Variable(b_data[1][0][sort_order]
+                                       .type(dtypeX).transpose_(0, 1))
+                X_batch_RNN_len = list(b_data[1][1][sort_order])
+                X_batch_RNN = pack_padded_sequence(X_batch_RNN,
+                                                   X_batch_RNN_len)
+                y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
+
                 batch_loss = loss(y_batch_pred, y_batch)
                 batch_loss.backward()
                 opt.step()
@@ -321,43 +306,39 @@ class FitModule(Module):
                 if verbose:
                     pb.bar(batch_i, log.output_metric())
             # Run metrics
-            y_pred, y_true = self.predict(train_loader, RNN=RNN, HYBRID=HYBRID,
-                                          log=log, GPU=GPU)
+            y_pred, y_true = self.predict(train_loader, log=log, GPU=GPU)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
             if test_loader is not None:
-                y_pred, y_true = self.predict(test_loader, loss=loss, RNN=RNN,
-                                              key='test', HYBRID=HYBRID,
-                                              log=log, GPU=GPU)
+                y_pred, y_true = self.predict(test_loader, loss=loss,
+                                              key='test', log=log, GPU=GPU)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                 'test')
             if valid_loaders is not None:
                 for valid_loader, valid_key in zip(valid_loaders, valid_keys):
                     y_pred, y_true = self.predict(valid_loader, loss=loss,
-                                                  RNN=RNN, key=valid_key,
-                                                  HYBRID=HYBRID, log=log,
+                                                  key=valid_key, log=log,
                                                   GPU=GPU)
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                     valid_key)
             if verbose:
                 pb.close()
-            torch.save(self, '{}_{}'.format(dest, t))
+            torch.save(self, '{}_epoch_{}.pt'.format(dest, t))
             with open('{}_{}.json'.format(dest, t), 'w') as fp:
                 json.dump(log.metrics, fp)
             log.output_metrics()
         return log
 
-    def predict(self, loader, loss=None, RNN=False, key=None, HYBRID=False,
-                log=None, GPU=False):
+    def predict(self, loader, loss=None, key=None, log=None, GPU=False):
         '''Generates output predictions for the input samples.
-
         Computation is done in batches.
 
-        # Arguments
-            X: input data Tensor.
-            batch_size: integer.
-
-        # Returns
-            prediction Tensor.
+        Arguments:
+            loader (DataLoader): loader for data
+            loss (object): training loss object
+            key (string): label of processed data
+            log (Logger object): logger object with which training/testing
+                metrics are processed/saved
+            GPU (bool): trains using a GPU
         '''
         # Build DataLoader
         # Batch prediction
@@ -375,32 +356,23 @@ class FitModule(Module):
         batch_size = loader.batch_size
         for b_data in loader:
             # Predict on batch
-            if HYBRID:
-                X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                         descending=True)
-                revert_mask = np.argsort(sort_order.numpy())
-                y_batch = Variable(b_data[2].type(dtypeY), volatile=True)
-                X_batch_conv = Variable(b_data[0][sort_order].type(dtypeX)
-                                        .transpose_(0, 1), volatile=True)
-                X_batch_RNN = Variable(b_data[1][0][sort_order].type(dtypeX)
-                                       .transpose_(0, 1), volatile=True)
-                X_batch_RNN_len = list(b_data[1][1][sort_order])
-                X_batch_RNN = pack_padded_sequence(X_batch_RNN,
-                                                   X_batch_RNN_len)
-                y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-                if GPU:
-                    y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
-                else:
-                    y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
-
-            elif RNN:
-                X_batch = Variable(b_data[0].type(dtypeX).transpose_(0, 1),
-                                   volatile=True)
-                hidden = self.init_hidden(len(X_batch[0]), dtypeX)
-                y_batch_pred, hidden = self(X_batch, hidden)
+            X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
+                                                     descending=True)
+            revert_mask = np.argsort(sort_order.numpy())
+            y_batch = Variable(b_data[2].type(dtypeY), volatile=True)
+            X_batch_conv = Variable(b_data[0][sort_order].type(dtypeX)
+                                    .transpose_(0, 1), volatile=True)
+            X_batch_RNN = Variable(b_data[1][0][sort_order].type(dtypeX)
+                                   .transpose_(0, 1), volatile=True)
+            X_batch_RNN_len = list(b_data[1][1][sort_order])
+            X_batch_RNN = pack_padded_sequence(X_batch_RNN,
+                                               X_batch_RNN_len)
+            y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
+            if GPU:
+                y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
             else:
-                X_batch = Variable(b_data[0].type(dtypeX), volatile=True)
-                y_batch_pred = self(X_batch)
+                y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
+
             if key:
                 batch_loss = loss(y_batch_pred, y_batch)
                 log.log_loss(batch_loss.data.cpu().numpy()[0], key)
@@ -416,8 +388,18 @@ class FitModule(Module):
         return y_pred, y_true
 
 
-class logger(object):
+class Logger(object):
     def __init__(self, metrics, test=True, valid_keys=None):
+        '''Object which stores and calculates metrics produced by a neural
+        network during training
+
+        Attributes:
+            metrics (list): lists all metrics stored during training. list can
+                include ['acc','AUC', 'loss', 'P-R']
+            test (bool): store metrics of test set (default: True)
+            valid_keys (list): list of labels for each valid_loader used during
+            training
+        '''
         self.i = {'train': 0}
         self.log_auc, self.log_acc, self.log_p_r = False, False, False
         self.metrics = {'train': {}}
@@ -445,6 +427,12 @@ class logger(object):
             self.metrics[key].update({'loss': [0]})
 
     def log_loss(self, loss, key='train'):
+        '''Logs loss metric
+
+        Attributes:
+            loss (float): training loss
+            key (string): label of processed data
+        '''
         self.i[key] += 1
 
         update = (self.metrics[key]['loss'][-1]*(self.i[key]-1)
@@ -452,7 +440,13 @@ class logger(object):
         self.metrics[key]['loss'].append(update)
 
     def log_metrics(self, y_true, y_hat, key='train'):
+        '''Logs non-loss metrics
 
+        Attributes:
+            y_true (array): array containing true labels
+            y_hat (array): array containing predicted labels
+            key (string): label of processed data
+        '''
         if self.log_auc:
             auc = roc_auc_score(y_true, y_hat[:, 1])
             self.metrics[key]['auc'].append(auc)
@@ -464,9 +458,17 @@ class logger(object):
             self.metrics[key]['p-r'].append(p_r)
 
     def output_metric(self, key='train', metric='loss'):
+        '''Prints last recorded value of metric
+
+        Attributes:
+            key (string): label of processed data
+            metric (string): key of metric to be printed
+        '''
         return self.metrics[key][metric][-1]
 
     def output_metrics(self):
+        '''Prints last recorded values of all metrics
+        '''
         print('')
         for key in sorted(self.metrics):
             print('{}:'.format(key), end='')
