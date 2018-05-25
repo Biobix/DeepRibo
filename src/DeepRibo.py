@@ -219,17 +219,37 @@ def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
               optimizer=optimizer, log=log, dest=dest, GPU=GPU)
 
 
-def predict(data_path, test_data, test_cutoff, model_name, dest, batch_size,
+def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
             GPU):
+    """Uses the model for predictions
+
+    Arguments:
+        data_path (string): path to main directory containing experimental
+            data
+        test_data (list): list of folder names in data_path used for pred-
+            ictions
+        train_cutoff (tupel): Tupel containing two lists each listing the
+            minimum RPKM ([0]) and coverage ([1]) cutoff values for each of
+            the datasets in train_data. Values given must be in the same
+            sequential order as train_data.
+        test_cutoff (tupel): Tupel containing two lists each listing the
+            minimum RPKM ([0]) and coverage ([1]) cutoff values for each of
+            the datasets in test_data. Values given must be in the same
+            sequential order as test_data.
+        dest (string): path to folder in which the model is saved
+        batch_size (int): batch size (default:32)
+        epochs (int): training epochs (default:25)
+        GPU (bool): trains model using a GPU
+    """
     hidden_size = 128
 
-    test_loader = load_database(data_path, test_data, test_cutoff, batch_size,
+    pred_loader = load_database(data_path, pred_data, pred_cutoff, batch_size,
                                 True)
     model = DualComplex(hidden_size, 2, True)
 
     model.load_state_dict(torch.load(model_name))
-    pred, true = model.predict(test_loader, GPU=GPU)
-    df_pred = extend_lib(test_loader.dataset.masked_list, pred)
+    pred, true = model.predict(pred_loader, GPU=GPU)
+    df_pred = extend_lib(pred_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 
 
