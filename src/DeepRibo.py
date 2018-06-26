@@ -74,12 +74,12 @@ class CustomLoader(Dataset):
     def __getitem__(self, index):
         # load and transform DNA sequence data
         path = '{}/{}'.format(self.data_path, self.X_train.iloc[index, 0])
-        img = torch.from_numpy(np.load(path)).contiguous()
-        img = img.view(1, img.shape[0],
-                       img.shape[1]).transpose(0, 2)
+        img = torch.load(path)
+        #img = img.view(img.shape[0],
+        #               img.shape[1], 1)
         # load and transform RIBO-seq sequence data
         path = "{}/{}".format(self.data_path, self.X_train.iloc[index, 1])
-        counts = torch.from_numpy(np.load(path))
+        counts = torch.load(path)
         label = self.y_train[index]
         return img, counts, label
 
@@ -117,7 +117,7 @@ class DualComplex(FitModule):
         y, hidden = self.gru(y)
         hidden = hidden.transpose(0, 1).contiguous()
         hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi)
-        x = x[0].transpose(0, 1)
+        x = x[0]
 
         x = F.relu(self.conv_ch_1(x))
         x = F.relu(self.conv1(x))
@@ -164,13 +164,11 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
                                   batch_size=batch_size,
                                   sampler=valid_sampler,
                                   num_workers=0,
-                                  collate_fn=default_collate,
                                   pin_memory=pin_memory)
         train_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
                                   num_workers=0,
-                                  collate_fn=default_collate,
                                   pin_memory=pin_memory)
 
         return train_loader, valid_loader
@@ -181,7 +179,6 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
                                   num_workers=0,
-                                  collate_fn=default_collate,
                                   pin_memory=pin_memory)
 
         return train_loader
@@ -217,24 +214,24 @@ def trainModel(data_path, train_data, valid_size, train_cutoff, test_cutoff,
     hidden_size = 128
 
     if GPU:
-        dtype = torch.cuda.FloatTensor
+        device = torch.device('cuda')
     else:
-        dtype = torch.FloatTensor
+        device = torch.device('cpu')
     # create weighted loss (heavily imbalanced data)
     ratio = sum(train_loader.dataset.y_train)/len(train_loader.dataset.y_train)
-    weights = torch.FloatTensor([ratio, 1-ratio]).type(dtype)
+    weights = torch.FloatTensor([ratio, 1-ratio]).to(device)
     # initialize model
     model = DualComplex(hidden_size, 2, True)
-    model.type(dtype)
+    model.to(device)
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
     scheduler = StepLR(optimizer, 10, gamma=0.1)
     # key under which performance measures are saved
-    test_keys = ["test_data"]
+    valid_keys = ["valid_data"]
     # record loss, accuracy, AUC, PR-AUC on test set
-    log = Logger(["loss", "AUC", "P-R", "acc"], False, test_keys)
+    log = Logger(["loss", "AUC", "P-R", "acc"], False, valid_keys)
     # train the model
-    model.fit(train_loader, valid_loaders=[valid_loader], valid_keys=test_keys,
+    model.fit(device, train_loader, valid_loaders=[valid_loader], valid_keys=valid_keys,
               scheduler=scheduler, epochs=epochs, loss=loss,
               optimizer=optimizer, log=log, dest=dest, GPU=GPU)
 

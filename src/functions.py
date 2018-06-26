@@ -1,4 +1,5 @@
 import collections
+import re
 from fitmodule.utils import ProgressBar
 import math
 import numpy as np
@@ -224,7 +225,7 @@ def extend_lib(df, pred):
 
 class FitModule(Module):
 
-    def fit(self, train_loader, test_loader=None, valid_loaders=None,
+    def fit(self, device, train_loader, test_loader=None, valid_loaders=None,
             valid_keys=None, scheduler=None, epochs=50, initial_epoch=0,
             seed=None, loss=None, optimizer=None, log=None, dest='default',
             verbose=1, GPU=False):
@@ -269,7 +270,6 @@ class FitModule(Module):
         # Compile optimizer
         opt = optimizer
         # Run training loop
-        self.train()
         for t in range(initial_epoch, epochs):
             if scheduler:
                 scheduler.step()
@@ -279,17 +279,27 @@ class FitModule(Module):
                 pb = ProgressBar(len(train_loader))
             epoch_loss = 0.0
             # Run batches
+            self.train()
             for batch_i, b_data in enumerate(train_loader):
                 # Backprop
                 opt.zero_grad()
 
+                #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
+                #                                         descending=True)
+                #y_batch = Variable(b_data[2][sort_order].type(dtypeY))
+                #X_batch_conv = Variable(b_data[0][sort_order]
+                #                        .type(dtypeX).transpose_(0, 1))
+                #X_batch_RNN = Variable(b_data[1][0][sort_order]
+                #                       .type(dtypeX).transpose_(0, 1))
+                #X_batch_RNN_len = list(b_data[1][1][sort_order])
+                #X_batch_RNN = pack_padded_sequence(X_batch_RNN,
+                #                                   X_batch_RNN_len)
+                #y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
                 X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
                                                          descending=True)
-                y_batch = Variable(b_data[2][sort_order].type(dtypeY))
-                X_batch_conv = Variable(b_data[0][sort_order]
-                                        .type(dtypeX).transpose_(0, 1))
-                X_batch_RNN = Variable(b_data[1][0][sort_order]
-                                       .type(dtypeX).transpose_(0, 1))
+                y_batch = b_data[2][sort_order].to(device)
+                X_batch_conv = b_data[0][sort_order].to(device)
+                X_batch_RNN = b_data[1][0][sort_order].transpose_(0, 1).to(device)
                 X_batch_RNN_len = list(b_data[1][1][sort_order])
                 X_batch_RNN = pack_padded_sequence(X_batch_RNN,
                                                    X_batch_RNN_len)
@@ -355,22 +365,37 @@ class FitModule(Module):
         batch_size = loader.batch_size
         for b_data in loader:
             # Predict on batch
-            X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                     descending=True)
-            revert_mask = np.argsort(sort_order.numpy())
-            y_batch = Variable(b_data[2].type(dtypeY), volatile=True)
-            X_batch_conv = Variable(b_data[0][sort_order].type(dtypeX)
-                                    .transpose_(0, 1), volatile=True)
-            X_batch_RNN = Variable(b_data[1][0][sort_order].type(dtypeX)
-                                   .transpose_(0, 1), volatile=True)
-            X_batch_RNN_len = list(b_data[1][1][sort_order])
-            X_batch_RNN = pack_padded_sequence(X_batch_RNN,
-                                               X_batch_RNN_len)
-            y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-            if GPU:
-                y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
-            else:
-                y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
+            #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
+            #                                         descending=True)
+            #revert_mask = np.argsort(sort_order.numpy())
+            #y_batch = Variable(b_data[2].type(dtypeY), volatile=True)
+            #X_batch_conv = Variable(b_data[0][sort_order].type(dtypeX)
+            #                        .transpose_(0, 1), volatile=True)
+            #X_batch_RNN = Variable(b_data[1][0][sort_order].type(dtypeX)
+            #                       .transpose_(0, 1), volatile=True)
+            #X_batch_RNN_len = list(b_data[1][1][sort_order])
+            #X_batch_RNN = pack_padded_sequence(X_batch_RNN,
+            #                                   X_batch_RNN_len)
+            #y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
+            #if GPU:
+            #    y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
+            #else:
+            #    y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
+            with torch.no_grad():
+                X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
+                                                         descending=True)
+                revert_mask = np.argsort(sort_order.numpy())
+                y_batch = b_data[2].to(device)
+                X_batch_conv = b_data[0][sort_order].to(device)
+                X_batch_RNN = b_data[1][0][sort_order].transpose_(0, 1)
+                X_batch_RNN_len = list(b_data[1][1][sort_order])
+                X_batch_RNN = pack_padded_sequence(X_batch_RNN,
+                                                   X_batch_RNN_len)
+                y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
+                if GPU:
+                    y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
+                else:
+                    y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
 
             if key:
                 batch_loss = loss(y_batch_pred, y_batch)

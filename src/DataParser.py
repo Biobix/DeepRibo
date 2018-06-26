@@ -4,6 +4,7 @@ import numpy as np
 import argparse
 from Bio import SeqIO
 from Bio import Seq
+import torch
 
 WIN_SIZE = 30
 WIN_L = 50
@@ -154,7 +155,7 @@ def parseData(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path,
 
         temp = pd.Series(start_sites)
         temp_stop = pd.Series(stop_sites)
-        labels_stop = temp_stop.isin(gff_temp[4]-2)
+        labels_stop = temp_stop.isin(gff_temp[4]+1)
         labels_start = temp.isin(gff_temp[3])
         labels = np.logical_and(labels_stop,
                                 labels_start).values.astype(np.int)
@@ -196,10 +197,10 @@ def parseData(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path,
             reads_sum.append(int(np.sum(sig_t[start-1:stop+WIN_L-1])))
             prot_seq.append(Seq.translate(seq_temp[ORF_start:ORF_stop+3]))
 
-            seq_img = np.zeros((WIN_SIZE, 4))
+            seq_img = np.zeros((4, WIN_SIZE, 1))
             for j, nt in enumerate(seq):
                 if nt is not "N":
-                    seq_img[j, seq_dict[nt]] = 1
+                    seq_img[seq_dict[nt], j, 0] = 1
             if asense:
                 f_start = len(chrom)-start+1
                 gene_locs.append("{}:{}-{}".format(chr_str, len(chrom)-stop+1,
@@ -212,10 +213,10 @@ def parseData(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path,
             if dest_path[-1] == '/':
                 dest_path = dest_path[:-1]
             data_name = dest_path.split('/')[-1]
-            file_name_seq = "{}_seq.npy".format(f_name)
-            file_name_reads = "{}_reads.npy".format(f_name)
-            np.save("{}/{}".format(dest_path, file_name_seq), seq_img)
-            np.save("{}/{}".format(dest_path, file_name_reads), counts)
+            file_name_seq = "{}_seq.pt".format(f_name)
+            file_name_reads = "{}_reads.pt".format(f_name)
+            torch.save(seq_img, "{}/{}".format(dest_path, file_name_seq))
+            torch.save(counts, "{}/{}".format(dest_path, file_name_reads))
             filenames_seq.append("{}/{}".format(data_name, file_name_seq))
             filenames_reads.append("{}/{}".format(data_name, file_name_reads))
             labels_all.append(labels[i])
