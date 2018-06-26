@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 import torch.nn as nn
@@ -132,7 +133,7 @@ class DualComplex(FitModule):
 
 
 def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
-                 test=False):
+                 valid_size=0):
     """Loads data using a custom loader
 
     Arguments:
@@ -151,22 +152,43 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
 
     """
     data = CustomLoader(data_path, data, cutoff)
-    if test:
-        sampler = SequentialSampler(range(len(data)))
+    idx = np.arange(len(data.masked_list))
+    dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
+    labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
+    if valid_size != 0:
+        train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
+                                                stratify=labels)
+        valid_sampler = SubsetRandomSampler(valid_idx)
+        train_sampler = SubsetRandomSampler(train_idx)
+        valid_loader = DataLoader(data,
+                                  batch_size=batch_size,
+                                  sampler=valid_sampler,
+                                  num_workers=0,
+                                  collate_fn=default_collate,
+                                  pin_memory=pin_memory)
+        train_loader = DataLoader(data,
+                                  batch_size=batch_size,
+                                  sampler=train_sampler,
+                                  num_workers=0,
+                                  collate_fn=default_collate,
+                                  pin_memory=pin_memory)
+
+        return train_loader, valid_loader
+
     else:
-        sampler = SubsetRandomSampler(range(len(data)))
-    loader = DataLoader(data,
-                        batch_size=batch_size,
-                        sampler=sampler,
-                        num_workers=0,
-                        collate_fn=default_collate,
-                        pin_memory=pin_memory)
+        train_sampler = SubsetRandomSampler(idx)
+        train_loader = DataLoader(data,
+                                  batch_size=batch_size,
+                                  sampler=train_sampler,
+                                  num_workers=0,
+                                  collate_fn=default_collate,
+                                  pin_memory=pin_memory)
 
-    return loader
+        return train_loader
 
 
-def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
-                dest, batch_size, epochs, GPU):
+def trainModel(data_path, train_data, valid_size, train_cutoff, test_cutoff,
+               dest, batch_size, epochs, GPU):
     """Trains the model using DeepRibo methodology
 
     Arguments:
@@ -187,12 +209,10 @@ def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
-    train_loader = loadDatabase(data_path, train_data, train_cutoff,
-                                batch_size, GPU)
-    print("{} samples in train data".format(len(train_loader.dataset.X_train)))
-    test_loader = loadDatabase(data_path, test_data, test_cutoff, batch_size,
-                               GPU, True)
-    print("{} samples in test data".format(len(test_loader.dataset.X_train)))
+    train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
+                                              batch_size, GPU, valid_size)
+    print("{} samples in train data".format(len(train_loader.sampler)))
+    print("{} samples in valid data".format(len(valid_loader.sampler)))
 
     hidden_size = 128
 
@@ -214,7 +234,7 @@ def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
     # record loss, accuracy, AUC, PR-AUC on test set
     log = Logger(["loss", "AUC", "P-R", "acc"], False, test_keys)
     # train the model
-    model.fit(train_loader, valid_loaders=[test_loader], valid_keys=test_keys,
+    model.fit(train_loader, valid_loaders=[valid_loader], valid_keys=test_keys,
               scheduler=scheduler, epochs=epochs, loss=loss,
               optimizer=optimizer, log=log, dest=dest, GPU=GPU)
 
@@ -283,9 +303,9 @@ class ParseArgs(object):
             parser.add_argument('--train_data', default='[]', nargs='+',
                                 type=str, required=True, help="train data "
                                 "folder names present in the data path")
-            parser.add_argument('--test_data', nargs='*', type=str,
-                                help="test data folder names present in the "
-                                "data path")
+            parser.add_argument('--valid_size', nargs='*', type=int, default=0.05,
+                                help="percentage of train used as valid"
+                                "data")
             parser.add_argument('-r', '--tr_rpkm', nargs='+', type=float,
                                 required=True,
                                 help="minimum cutoff of RPKM values to filter "
@@ -312,10 +332,10 @@ class ParseArgs(object):
                                 "use of GPU (RECOMMENDED)")
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
-            train_model(args.data_path, args.train_data, args.test_data,
-                        (args.tr_rpkm, args.tr_cov),
-                        (args.te_rpkm, args.te_cov), args.dest,
-                        args.batch_size, args.epochs, args.GPU)
+            trainModel(args.data_path, args.train_data, args.valid_size,
+                       (args.tr_rpkm, args.tr_cov),
+                       (args.te_rpkm, args.te_cov), args.dest,
+                       args.batch_size, args.epochs, args.GPU)
 
         def predict(self):
             parser = argparse.ArgumentParser(
