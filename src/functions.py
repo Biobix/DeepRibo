@@ -9,6 +9,7 @@ from torch.autograd import Variable
 from torch.optim import Optimizer
 from torch.nn import Module
 from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataloader import numpy_type_map
 from sklearn.metrics import average_precision_score, roc_auc_score
 
@@ -129,15 +130,17 @@ def default_collate(batch):
 
         if not np.all([batch[0].shape == tensor.shape for tensor in batch]):
             pad = True
-            batch_lens = np.array([len(tensor) for tensor in batch])
-            max_len = np.max(batch_lens)
-            out_batch = torch.zeros(len(batch), int(max_len),
-                                    len(batch[0].shape))
+            #batch_lens = np.array([len(tensor) for tensor in batch])
+            #max_len = np.max(batch_lens)
+            #out_batch = torch.zeros(len(batch), int(max_len),
+            #                        len(batch[0].shape))
 
-            for i, variable in enumerate(batch):
-                length = variable.size(0)
-                out_batch[i, :length, :] = variable
-            batch = out_batch
+            #for i, variable in enumerate(batch):
+            #    length = variable.size(0)
+            #    out_batch[i, :length, :] = variable
+            batch_lens = np.sort([b.shape[0] for b in batch])[::-1].copy()
+            sort_order = np.argsort([b.shape[0] for b in batch])[::-1].copy()
+            batch = pad_sequence([batch[idx] for idx in sort_order])
 
         if _use_shared_memory:
             # If we're in a background process, concatenate directly into a
@@ -147,7 +150,8 @@ def default_collate(batch):
             out = batch[0].new(storage)
 
         if pad:
-            return torch.stack(batch, dim=0, out=out), torch.from_numpy(batch_lens)
+            # return torch.stack(batch, dim=0, out=out), torch.from_numpy(batch_lens)
+            return (batch, batch_lens, sort_order)
         else:
             return torch.stack(batch, dim=0, out=out)
     elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
@@ -295,12 +299,13 @@ class FitModule(Module):
                 #X_batch_RNN = pack_padded_sequence(X_batch_RNN,
                 #                                   X_batch_RNN_len)
                 #y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-                X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                         descending=True)
+                
+                #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
+                #                                         descending=True)
+                sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
                 y_batch = b_data[2][sort_order].to(device)
                 X_batch_conv = b_data[0][sort_order].to(device)
-                X_batch_RNN = b_data[1][0][sort_order].transpose_(0, 1).to(device)
-                X_batch_RNN_len = list(b_data[1][1][sort_order])
+                X_batch_RNN = b_data[1][0].to(device)
                 X_batch_RNN = pack_padded_sequence(X_batch_RNN,
                                                    X_batch_RNN_len)
                 y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))

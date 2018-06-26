@@ -74,12 +74,12 @@ class CustomLoader(Dataset):
     def __getitem__(self, index):
         # load and transform DNA sequence data
         path = '{}/{}'.format(self.data_path, self.X_train.iloc[index, 0])
-        img = torch.load(path)
+        img = torch.from_numpy(torch.load(path))
         #img = img.view(img.shape[0],
         #               img.shape[1], 1)
         # load and transform RIBO-seq sequence data
         path = "{}/{}".format(self.data_path, self.X_train.iloc[index, 1])
-        counts = torch.load(path)
+        counts = torch.from_numpy(torch.load(path))
         label = self.y_train[index]
         return img, counts, label
 
@@ -164,11 +164,13 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
                                   batch_size=batch_size,
                                   sampler=valid_sampler,
                                   num_workers=0,
+                                  collate_fn=default_collate,
                                   pin_memory=pin_memory)
         train_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
                                   num_workers=0,
+                                  collate_fn=default_collate,
                                   pin_memory=pin_memory)
 
         return train_loader, valid_loader
@@ -179,6 +181,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
                                   num_workers=0,
+                                  collate_fn=default_collate,
                                   pin_memory=pin_memory)
 
         return train_loader
