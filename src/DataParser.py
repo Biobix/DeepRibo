@@ -10,8 +10,13 @@ WIN_L = 50
 WIN_R = 10
 
 
-def load_genome(fasta, asense=False):
+def loadGenome(fasta, asense=False):
+    """Reads the fasta file and indexes the sequence
 
+    Arguments:
+        fasta (string): file path of the fasta file
+        asense (bool): saves the sense (False) or antisense (True) sequence
+    """
     chrom = []
     seq = []
 
@@ -28,7 +33,19 @@ def load_genome(fasta, asense=False):
     return genome
 
 
-def load_signal(RIBO_cov, RIBO_elo, chr_str, len_genome, asense=False):
+def loadSignal(RIBO_cov, RIBO_elo, chr_str, len_genome, asense=False):
+    """Reads the riboseq bedgraph files, saving the signal into one vector
+
+    Arguments:
+        RIBO_cov (string): file path to the bedgraph containing the ribosome
+        coverage signal
+        RIBO_elo (string): file path to the bedgraph containing the elongating
+        ribosome signal
+        chr_str (string): label of the vector/genome for which the signal is
+        obtained.
+        len_
+        asense (bool): saves the sense (False) or antisense (True) sequence
+    """
 
     columns = ['chrom', 'start', 'stop', 'count']
     sig_df = pd.read_csv(RIBO_cov, header=None, skiprows=1, index_col=0,
@@ -38,7 +55,6 @@ def load_signal(RIBO_cov, RIBO_elo, chr_str, len_genome, asense=False):
 
     sig = np.zeros(len_genome)
     sig_el = np.zeros(len_genome)
-    print(chr_str, )
     for start, end, count in zip(sig_df.loc[chr_str, "start"],
                                  sig_df.loc[chr_str, "stop"],
                                  sig_df.loc[chr_str, "count"]):
@@ -52,16 +68,25 @@ def load_signal(RIBO_cov, RIBO_elo, chr_str, len_genome, asense=False):
     return sig, sig_el
 
 
-def find_start_stop(chrom, start_codons, stop_codons):
+def findStartStop(chrom, start_codons, stop_codons, start_triplet,
+                  stop_triplet):
+    """Search for all possible ORFs given the possible start or stop
+    condons.
+
+    Attributes:
+        chrom (string): string containing the full sequence of the
+            vector/genome
+        start_codons (list): list of all possible start codons
+        stop_condons (list): list of all possible stop codons
+    """
     start_sites = []
     stop_sites = []
     for i in range(len(chrom)-3):
         start_codon = chrom[i:i+3]
-        if (start_codon == "ATG") or (start_codon == "GTG") or \
-                (start_codon == "TTG"):
+        if start_codon in start_triplet:
             for j in range(i, len(chrom)-2, 3):
                 codon = chrom[j:j+3]
-                if (codon == "TAA") or (codon == "TGA") or (codon == "TAG"):
+                if codon in stop_triplet:
                     stop_sites.append(j+1)
                     stop_codons.append(chrom[j:j+3])
                     start_sites.append(i+1)
@@ -71,24 +96,33 @@ def find_start_stop(chrom, start_codons, stop_codons):
     return start_sites, stop_sites, stop_codons, start_codons
 
 
-def execute_function(ribo_cov_sense,  ribo_cov_asense, ribo_elo_sense,
-                     ribo_elo_asense, fasta, gtf, dest_path):
+def executeFunction(ribo_cov_sense,  ribo_cov_asense, ribo_elo_sense,
+                    ribo_elo_asense, fasta, dest_path, gtf,
+                    start_trips, stop_trips):
 
-    df_gtf = pd.read_csv(gtf, sep="\t", comment="#", header=None)
-    df_CDS = df_gtf[df_gtf[2] == "CDS"]
-    df_as = parse_data(ribo_cov_asense, ribo_elo_asense, fasta, df_CDS,
-                       dest_path, asense=True)
-    df_s = parse_data(ribo_cov_sense, ribo_elo_sense, fasta, df_CDS,
-                      dest_path, asense=False)
+    if gtf is not None:
+        df_gtf = pd.read_csv(gtf, sep='\t', comment='#', header=None)
+    else:
+        df_gtf = pd.read_csv('data/dummy.gtf', sep='\t', comment='#',
+                             header=None)
+    df_CDS = df_gtf[df_gtf[2] == 'CDS']
+    df_as = parseData(ribo_cov_asense, ribo_elo_asense, fasta, df_CDS,
+                      dest_path, start_trips, stop_trips, asense=True)
+    df_s = parseData(ribo_cov_sense, ribo_elo_sense, fasta, df_CDS,
+                     dest_path, start_trips, stop_trips, asense=False)
     df_all = pd.concat([df_as, df_s])
     df_all.to_csv("{}/data_list.csv".format(dest_path), index=False)
 
-    print("Done")
+    print('Done')
 
 
-def parse_data(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path, asense):
+def parseData(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path,
+              start_trips, stop_trips, asense):
 
-    seq_dict = {"A": 0, "T": 1, "C": 2, "G": 3}
+    sign = '-' if asense else '+'
+    print("parsing {}".format({'-': 'antisense',
+                               '+': 'sense'}[sign]))
+    seq_dict = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
     filenames_seq, filenames_reads, labels_all = [], [], []
     start_codons, in_exons, reads_sum = [], [], []
     start_sites_all, stop_sites_all, stop_sites = [], [], []
@@ -96,16 +130,15 @@ def parse_data(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path, asense):
     coverage_elo, strands, gene_locs = [], [], []
     nuc_seq, prot_seq = [], []
 
-    genome = load_genome(fasta, asense=asense)
+    genome = loadGenome(fasta, asense=asense)
     chr_strs = genome.index.values
 
     for chr_str in chr_strs:
-        sign = "-" if asense else "+"
-        print(sign, end="  ")
-
+        print('{}'.format(chr_str))
         chrom = genome.loc[chr_str].values[0]
         start_sites, stop_sites, stop_codons, \
-            start_codons = find_start_stop(chrom, start_codons, stop_codons)
+            start_codons = findStartStop(chrom, start_codons, stop_codons,
+                                         start_trips, stop_trips)
         gff_temp = df_CDS[df_CDS[0] == chr_str]
 
         if asense:
@@ -120,16 +153,22 @@ def parse_data(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path, asense):
             gff_temp = gff_temp[gff_temp[6] == "+"]
 
         temp = pd.Series(start_sites)
-        labels = temp.isin(gff_temp[3]).values.astype(np.int)
-        print(sum(labels))
+        temp_stop = pd.Series(stop_sites)
+        labels_stop = temp_stop.isin(gff_temp[4]+2)
+        haha
+        #labels_stop = temp_stop.isin(gff_temp[4]+1)
+        labels_start = temp.isin(gff_temp[3])
+        labels = np.logical_and(labels_stop,
+                                labels_start).values.astype(np.int)
+        print("{} ORFs annotated positive".format(sum(labels)))
         for cod in temp:
             mask = np.logical_and(gff_temp.loc[:, 3] <= cod,
                                   gff_temp.loc[:, 4] >= cod)
             in_exons.append((np.any(mask))*1)
 
-        sig, sig_el = load_signal(RIBO_cov, RIBO_elo, chr_str,
-                                  len(genome.loc[chr_str].values[0]),
-                                  asense)
+        sig, sig_el = loadSignal(RIBO_cov, RIBO_elo, chr_str,
+                                 len(genome.loc[chr_str].values[0]),
+                                 asense)
         seq_temp = chrom[-int(WIN_L):] + chrom + \
             chrom[:int(WIN_R)]
 
@@ -182,8 +221,8 @@ def parse_data(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path, asense):
             filenames_seq.append("{}/{}".format(data_name, file_name_seq))
             filenames_reads.append("{}/{}".format(data_name, file_name_reads))
             labels_all.append(labels[i])
-    start_sites_all = np.array(start_sites_all).ravel()
-    stop_sites_all = np.array(stop_sites_all).ravel()
+    start_sites_all = np.hstack(start_sites_all)
+    stop_sites_all = np.hstack(stop_sites_all)
     df_dict = {"filename": filenames_seq, "filename_counts": filenames_reads,
                "label": labels_all, "in_gene": in_exons, "strand": strands,
                "coverage": coverage, "coverage_elo": coverage_elo,
@@ -201,25 +240,33 @@ def parse_data(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path, asense):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="parse Ribo-seq for use with"
-                                     "DeepRibo (Coverage)")
+    parser = argparse.ArgumentParser(description="parse ribosome sequencing"
+                                     "data into files used by DeepRibo",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('sense_cov', type=str, help="Path to bedgraph "
-                        "containing sense riboseq data (Elongating)")
+                        "containing sense riboseq data (coverage)")
     parser.add_argument('asense_cov', type=str, help="Path to bedgraph "
-                        "containing antisense riboseq data (Elongating)")
+                        "containing antisense riboseq data (coverage)")
     parser.add_argument('sense_elo', type=str, help="Path to bedgraph "
-                        "containing sense riboseq data (Elongating)")
+                        "containing sense riboseq data (elongating)")
     parser.add_argument('asense_elo', type=str, help="Path to bedgraph "
-                        "containing antisense riboseq data")
+                        "containing antisense riboseq data (elongating)")
     parser.add_argument('fasta', type=str, help="Path to fasta "
                         "containing genome sequence")
-    parser.add_argument('gtf', help="Path to gtf/gff containing annotation")
     parser.add_argument('destination', help="Path to output destination. This "
                         "path must contain two folders named 0 and 1")
+    parser.add_argument('-g', '--gtf', help="Path to gtf/gff containing annotation")
+    parser.add_argument('-s', '--start_trips', nargs='+', type=str,
+                        default=['ATG', 'GTG', 'TTG'], help="list of triplets"
+                        "considered as possible start codons")
+    parser.add_argument('-p', '--stop_trips', nargs='+', type=str,
+                        default=['TAA', 'TGA', 'TAG'], help="list of triplets"
+                        "considered as possible stop codons")
 
     args = parser.parse_args()
-    execute_function(args.sense_cov,  args.asense_cov, args.sense_elo,
-                     args.asense_elo, args.fasta, args.gtf, args.destination)
+    executeFunction(args.sense_cov,  args.asense_cov, args.sense_elo,
+                    args.asense_elo, args.fasta, args.destination, args.gtf,
+                    args.start_trips, args.stop_trips)
 
 
 if __name__ == "__main__":

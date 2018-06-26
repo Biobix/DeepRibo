@@ -116,7 +116,6 @@ def default_collate(batch):
     https://pytorch.org/docs/master/_modules/torch/utils/data/dataloader.html#DataLoader
     and tweaked for personal use'''
 
-
     error_msg = 'batch must contain tensors, numbers, dicts or lists; found {}'
     _use_shared_memory = True
     string_classes = (str, bytes)

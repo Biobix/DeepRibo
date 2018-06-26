@@ -131,8 +131,8 @@ class DualComplex(FitModule):
         return x, hidden
 
 
-def load_database(data_path, data, cutoff, batch_size, pin_memory=False,
-                  test=False):
+def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
+                 test=False):
     """Loads data using a custom loader
 
     Arguments:
@@ -158,7 +158,7 @@ def load_database(data_path, data, cutoff, batch_size, pin_memory=False,
     loader = DataLoader(data,
                         batch_size=batch_size,
                         sampler=sampler,
-                        num_workers=8,
+                        num_workers=0,
                         collate_fn=default_collate,
                         pin_memory=pin_memory)
 
@@ -187,11 +187,11 @@ def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
-    train_loader = load_database(data_path, train_data, train_cutoff,
-                                 batch_size, GPU)
+    train_loader = loadDatabase(data_path, train_data, train_cutoff,
+                                batch_size, GPU)
     print("{} samples in train data".format(len(train_loader.dataset.X_train)))
-    test_loader = load_database(data_path, test_data, test_cutoff, batch_size,
-                                GPU, True)
+    test_loader = loadDatabase(data_path, test_data, test_cutoff, batch_size,
+                               GPU, True)
     print("{} samples in test data".format(len(test_loader.dataset.X_train)))
 
     hidden_size = 128
@@ -243,7 +243,7 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
     """
     hidden_size = 128
 
-    pred_loader = load_database(data_path, pred_data, pred_cutoff, batch_size,
+    pred_loader = loadDatabase(data_path, pred_data, pred_cutoff, batch_size,
                                 True)
     model = DualComplex(hidden_size, 2, True)
 
@@ -306,10 +306,10 @@ class ParseArgs(object):
                                 help="path to which the model is saved")
             parser.add_argument('-b', '--batch_size', type=int, default=32,
                                 help="training batch size")
-            parser.add_argument('-e', '--epochs', default=25, type=int,
+            parser.add_argument('-e', '--epochs', default=20, type=int,
                                 help="training epochs")
-            parser.add_argument('--GPU', action="store_true", help="training "
-                                "using GPU (RECOMMENDED)")
+            parser.add_argument('--GPU', action="store_true", help=""
+                                "use of GPU (RECOMMENDED)")
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
             train_model(args.data_path, args.train_data, args.test_data,
@@ -335,19 +335,17 @@ class ParseArgs(object):
                                 "coverage value to filter the data used for "
                                 "predictions order")
             parser.add_argument('-m', '--model', type=str, required=True,
-                                help="path to the model used for predictions")
+                                help="path to the trained model")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 required=True, help="path to file in which "
                                 "predictions are saved")
-            parser.add_argument('-b', '--batch_size', type=int, default=32,
-                                help="training batch size")
             parser.add_argument('--GPU', action="store_true",
-                                help="training using GPU (RECOMMENDED)")
+                                help="use of GPU")
             args = parser.parse_args(sys.argv[2:])
             print('Creating predictions using model {}'.format(args.model))
             predict(args.data_path, [args.pred_data],
                     ([args.pr_rpkm], [args.pr_cov]), args.model,
-                    args.dest, args.batch_size, args.GPU)
+                    args.dest, 32, args.GPU)
 
 
 if __name__ == "__main__":

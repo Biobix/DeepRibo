@@ -1,6 +1,6 @@
 # DeepRibo
 
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. It is stronly recommended to use GPU's for the use of DeepRibo.
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. It is strongly recommended to use GPU infrastructure for training new models using DeepRibo. 
 
 # Installation
 
@@ -53,14 +53,14 @@ After all data has been processed, a model can be trained. Any or all datasets p
 
 `python DeepRibo.py train -h`
 
-During training, the model's weights are saved after each epoch. A json object is furthermore created after training containing all of the performance metrics for the training/testing data. These performance metrics include the loss, acceracy, Area Under the Roc Curve (AUC-ROC) and Area under the Precision-Recall Curve (PR-AUC). When training the model, cut-off values for both the training data and test data, based upon the minimal coverage and RPKM values of each sample, are given to filter out data with low to non-existent signal (see [Full Article](.)). two cut-off values have to be given for each dataset used for training/testing, and are required to be in the same order. To obtain the right values for each dataset, an R script is provided which uses the SiZer package. The function `get_cutoff_values` is listed in `src/s_curve_cutoff_estimation.R`. Simply run the script with the required parameters to obtain these values after parsing the data.
+During training, the model's weights are saved after each epoch. A json object is furthermore created after training containing all of the performance metrics for the training/testing data. These performance metrics include the loss, acceracy, Area Under the Roc Curve (AUC-ROC) and Area under the Precision-Recall Curve (PR-AUC). When training the model, cut-off values for both the training data and test data, based upon the minimal coverage and RPKM values of each sample, are given to filter out data with low to non-existent signal (see [Full Article](.)). two cut-off values have to be given for each dataset used for training/testing, and are required to be in the same order. To obtain the right values for each dataset, an R script is provided. Make sure to install the SiZer package before use. The function `get_cutoff_values` is listed in `src/s_curve_cutoff_estimation.R`. Simply run the script with the required parameters to obtain these values after parsing the data. 
 
 	# start R	
 	R
 	# load the functions from the script
 	>source('s_curve_cutoff_estimation.R')
 	# list the dataset and the path to which the png figure is stored
-	>get_cutoff_values(path="../../data/processed/<your data>/data_list.csv", dest="figure")
+	>get_cutoff_values(path="../data/processed/<your data>/data_list.csv", dest="figure")
 	$min_RPKM
 	  ....
 	$min_coverage
@@ -77,7 +77,7 @@ The output file is an extension of the `data_list.csv` file created when parsing
 
 # Pretrained models
 
-All six models discussed in the [Full Article](.) are located in `models/`, and can be directly used for making predictions on personal data. User data has to be first parsed using `DataParser.py`. Before any predictions can be made, cut-off values have to be determined on the user data using the R-script `src/s_curve_cutoff_estimation.R`.
+All six models discussed in the [Full Article](.) are located in `models/`, and can be directly used for making predictions on personal data. User data has to be first parsed using `DataParser.py`. Before any predictions can be made, cut-off values have to be determined on the user data using the R-script `src/s_curve_cutoff_estimation.R`. In case no annotation data is available (*de novo*), a conservative value of 0.12 and 0.27 can be taken for the coverage and RPKM cutoff, respectively.
 
 
 # Code Examples
