@@ -10,7 +10,7 @@ from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
-from functions import FitModule, default_collate, Logger, Adam, extend_lib
+from functions import FitModule, defaultCollate, Logger, Adam, extendLib
 
 
 class CustomLoader(Dataset):
@@ -161,13 +161,13 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
                                   batch_size=batch_size,
                                   sampler=valid_sampler,
                                   num_workers=0,
-                                  collate_fn=default_collate,
+                                  collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
         train_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
                                   num_workers=0,
-                                  collate_fn=default_collate,
+                                  collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
 
         return train_loader, valid_loader
@@ -178,7 +178,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
                                   num_workers=0,
-                                  collate_fn=default_collate,
+                                  collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
 
         return train_loader
@@ -266,7 +266,7 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
 
     model.load_state_dict(torch.load(model_name))
     pred, true = model.predict(pred_loader, GPU=GPU)
-    df_pred = extend_lib(pred_loader.dataset.masked_list, pred)
+    df_pred = extendLib(pred_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 
 
