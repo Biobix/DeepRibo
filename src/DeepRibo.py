@@ -184,7 +184,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
         return train_loader
 
 
-def trainModel(data_path, train_data, valid_size, train_cutoff, test_cutoff,
+def trainModel(data_path, train_data, valid_size, train_cutoff,
                dest, batch_size, epochs, GPU):
     """Trains the model using DeepRibo methodology
 
@@ -303,21 +303,13 @@ class ParseArgs(object):
             parser.add_argument('--valid_size', nargs='*', type=int, default=0.05,
                                 help="percentage of train used as valid"
                                 "data")
-            parser.add_argument('-r', '--tr_rpkm', nargs='+', type=float,
+            parser.add_argument('-r', '--rpkm', nargs='+', type=float,
                                 required=True,
                                 help="minimum cutoff of RPKM values to filter "
                                 "the training data")
-            parser.add_argument('-c', '--tr_cov', nargs='+', type=float,
+            parser.add_argument('-c', '--coverage', nargs='+', type=float,
                                 required=True, help="minimum cutoff of"
                                 "coverage values to filter the training data"
-                                ", these are given in the same order.")
-            parser.add_argument('-tr', '--te_rpkm', nargs='*', type=float,
-                                help="minimum cutoff of RPKM values to filter "
-                                "the testing data"
-                                ", these are given in the same order.")
-            parser.add_argument('-tc', '--te_cov', nargs='*', type=float,
-                                help="minimum cutoff of coverage values to "
-                                "filter the testing data"
                                 ", these are given in the same order.")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 help="path to which the model is saved")
@@ -330,8 +322,7 @@ class ParseArgs(object):
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
             trainModel(args.data_path, args.train_data, args.valid_size,
-                       (args.tr_rpkm, args.tr_cov),
-                       (args.te_rpkm, args.te_cov), args.dest,
+                       (args.rpkm, args.coverage), args.dest,
                        args.batch_size, args.epochs, args.GPU)
 
         def predict(self):
@@ -343,11 +334,11 @@ class ParseArgs(object):
             parser.add_argument('--pred_data', type=str, required=True,
                                 help="data folder name present in the data "
                                 "path used to make predictions on")
-            parser.add_argument('-pr', '--pr_rpkm',  type=float,
+            parser.add_argument('-r', '--rpkm',  type=float,
                                 required=True, help="minimum cutoff of RPKM "
                                 "value to filter the data used for "
                                 "predictions.")
-            parser.add_argument('-pc', '--pr_cov', nargs='+', type=float,
+            parser.add_argument('-c', '--coverage', nargs='+', type=float,
                                 required=True, help="minimum cutoff of "
                                 "coverage value to filter the data used for "
                                 "predictions order")
@@ -361,7 +352,7 @@ class ParseArgs(object):
             args = parser.parse_args(sys.argv[2:])
             print('Creating predictions using model {}'.format(args.model))
             predict(args.data_path, [args.pred_data],
-                    ([args.pr_rpkm], [args.pr_cov]), args.model,
+                    ([args.rpkm], [args.coverage]), args.model,
                     args.dest, 32, args.GPU)
 
 
