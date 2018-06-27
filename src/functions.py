@@ -106,13 +106,13 @@ class Adam(Optimizer):
         return loss
 
 
-def auc_from_tensors(y_hat, y_true):
+def aucFromTensors(y_hat, y_true):
     y_true, y_hat = y_true.numpy(), y_hat.numpy()
     auc = roc_auc_score(y_true, y_hat[:, 1])
     return auc
 
 
-def default_collate(batch):
+def defaultCollate(batch):
     '''Puts each data field into a tensor with outer dimension batch size'
     code copied from
     https://pytorch.org/docs/master/_modules/torch/utils/data/dataloader.html#DataLoader
@@ -141,7 +141,7 @@ def default_collate(batch):
             batch_lens = np.sort([b.shape[0] for b in batch])[::-1].copy()
             sort_order = np.argsort([b.shape[0] for b in batch])[::-1].copy()
             batch = pad_sequence([batch[idx] for idx in sort_order])
-            batch.unsqueeze_(2)
+            batch.unsqueeze_(2).contiguous()
 
         if _use_shared_memory:
             # If we're in a background process, concatenate directly into a
@@ -174,13 +174,13 @@ def default_collate(batch):
     elif isinstance(batch[0], string_classes):
         return batch
     elif isinstance(batch[0], collections.Mapping):
-        return {key: default_collate([d[key] for d in batch]) for key in batch[0]}
+        return {key: defaultCollate([d[key] for d in batch]) for key in batch[0]}
     elif isinstance(batch[0], collections.Sequence):
         transposed = zip(*batch)
-        return [default_collate(samples) for samples in transposed]
+        return [defaultCollate(samples) for samples in transposed]
 
 
-def extend_lib(df, pred):
+def extendLib(df, pred):
     '''Function that uses the predictions to extend the data_list.csv object
     of a given dataset
 
@@ -289,20 +289,6 @@ class FitModule(Module):
                 # Backprop
                 opt.zero_grad()
 
-                #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                #                                         descending=True)
-                #y_batch = Variable(b_data[2][sort_order].type(dtypeY))
-                #X_batch_conv = Variable(b_data[0][sort_order]
-                #                        .type(dtypeX).transpose_(0, 1))
-                #X_batch_RNN = Variable(b_data[1][0][sort_order]
-                #                       .type(dtypeX).transpose_(0, 1))
-                #X_batch_RNN_len = list(b_data[1][1][sort_order])
-                #X_batch_RNN = pack_padded_sequence(X_batch_RNN,
-                #                                   X_batch_RNN_len)
-                #y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-                
-                #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                #                                         descending=True)
                 sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
                 y_batch = b_data[2][sort_order].type(dtypeY).to(device)
                 X_batch_conv = b_data[0][sort_order].type(dtypeX).to(device)
@@ -321,7 +307,7 @@ class FitModule(Module):
                 if verbose:
                     pb.bar(batch_i, log.output_metric())
             # Run metrics
-            y_pred, y_true = self.predict(train_loader, log=log, GPU=GPU)
+            y_pred, y_true = self.predict(device, train_loader, log=log, GPU=GPU)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
             if test_loader is not None:
                 y_pred, y_true = self.predict(device, test_loader, loss=loss,
@@ -371,22 +357,6 @@ class FitModule(Module):
         batch_size = loader.batch_size
         for b_data in loader:
             # Predict on batch
-            #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-            #                                         descending=True)
-            #revert_mask = np.argsort(sort_order.numpy())
-            #y_batch = Variable(b_data[2].type(dtypeY), volatile=True)
-            #X_batch_conv = Variable(b_data[0][sort_order].type(dtypeX)
-            #                        .transpose_(0, 1), volatile=True)
-            #X_batch_RNN = Variable(b_data[1][0][sort_order].type(dtypeX)
-            #                       .transpose_(0, 1), volatile=True)
-            #X_batch_RNN_len = list(b_data[1][1][sort_order])
-            #X_batch_RNN = pack_padded_sequence(X_batch_RNN,
-            #                                   X_batch_RNN_len)
-            #y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-            #if GPU:
-            #    y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
-            #else:
-            #    y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
             with torch.no_grad():
                 sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
                 y_batch = b_data[2][sort_order].type(dtypeY).to(device)

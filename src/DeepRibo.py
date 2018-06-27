@@ -75,9 +75,6 @@ class CustomLoader(Dataset):
         # load and transform DNA sequence data
         path = '{}/{}'.format(self.data_path, self.X_train.iloc[index, 0])
         img = torch.from_numpy(torch.load(path))
-        #img = img.view(img.shape[0],
-        #               img.shape[1], 1)
-        # load and transform RIBO-seq sequence data
         path = "{}/{}".format(self.data_path, self.X_train.iloc[index, 1])
         counts = torch.from_numpy(torch.load(path))
         label = self.y_train[index]
@@ -116,14 +113,14 @@ class DualComplex(FitModule):
         y = x[1]
         y, hidden = self.gru(y)
         hidden = hidden.transpose(0, 1).contiguous()
-        hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi)
+        hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi).contiguous()
         x = x[0]
 
         x = F.relu(self.conv_ch_1(x))
         x = F.relu(self.conv1(x))
         x = x.view(-1, math.ceil((((self.input_len-11)))*32))
 
-        x = torch.cat([x, hidden], dim=1)
+        x = torch.cat([x, hidden], dim=1).contiguous()
 
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
