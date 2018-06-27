@@ -141,6 +141,7 @@ def default_collate(batch):
             batch_lens = np.sort([b.shape[0] for b in batch])[::-1].copy()
             sort_order = np.argsort([b.shape[0] for b in batch])[::-1].copy()
             batch = pad_sequence([batch[idx] for idx in sort_order])
+            batch.unsqueeze_(2)
 
         if _use_shared_memory:
             # If we're in a background process, concatenate directly into a
@@ -303,9 +304,9 @@ class FitModule(Module):
                 #X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
                 #                                         descending=True)
                 sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
-                y_batch = b_data[2][sort_order].to(device)
-                X_batch_conv = b_data[0][sort_order].to(device)
-                X_batch_RNN = b_data[1][0].to(device)
+                y_batch = b_data[2][sort_order].type(dtypeY).to(device)
+                X_batch_conv = b_data[0][sort_order].type(dtypeX).to(device)
+                X_batch_RNN = b_data[1][0].type(dtypeX).to(device)
                 X_batch_RNN = pack_padded_sequence(X_batch_RNN,
                                                    X_batch_RNN_len)
                 y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
@@ -314,8 +315,8 @@ class FitModule(Module):
                 batch_loss.backward()
                 opt.step()
                 # Update status
-                epoch_loss += batch_loss.data[0]
-                log.log_loss(batch_loss.data.cpu().numpy()[0])
+                epoch_loss += batch_loss.item()
+                log.log_loss(batch_loss.item())
 
                 if verbose:
                     pb.bar(batch_i, log.output_metric())
@@ -323,13 +324,13 @@ class FitModule(Module):
             y_pred, y_true = self.predict(train_loader, log=log, GPU=GPU)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
             if test_loader is not None:
-                y_pred, y_true = self.predict(test_loader, loss=loss,
+                y_pred, y_true = self.predict(device, test_loader, loss=loss,
                                               key='test', log=log, GPU=GPU)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                 'test')
             if valid_loaders is not None:
                 for valid_loader, valid_key in zip(valid_loaders, valid_keys):
-                    y_pred, y_true = self.predict(valid_loader, loss=loss,
+                    y_pred, y_true = self.predict(device, valid_loader, loss=loss,
                                                   key=valid_key, log=log,
                                                   GPU=GPU)
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
@@ -342,7 +343,7 @@ class FitModule(Module):
             log.output_metrics()
         return log
 
-    def predict(self, loader, loss=None, key=None, log=None, GPU=False):
+    def predict(self, device, loader, loss=None, key=None, log=None, GPU=False):
         '''Generates output predictions for the input samples.
         Computation is done in batches.
 
@@ -387,24 +388,17 @@ class FitModule(Module):
             #else:
             #    y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
             with torch.no_grad():
-                X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                         descending=True)
-                revert_mask = np.argsort(sort_order.numpy())
-                y_batch = b_data[2].to(device)
-                X_batch_conv = b_data[0][sort_order].to(device)
-                X_batch_RNN = b_data[1][0][sort_order].transpose_(0, 1)
-                X_batch_RNN_len = list(b_data[1][1][sort_order])
+                sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
+                y_batch = b_data[2][sort_order].type(dtypeY).to(device)
+                X_batch_conv = b_data[0][sort_order].type(dtypeX).to(device)
+                X_batch_RNN = b_data[1][0].type(dtypeX).to(device)
                 X_batch_RNN = pack_padded_sequence(X_batch_RNN,
                                                    X_batch_RNN_len)
                 y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-                if GPU:
-                    y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
-                else:
-                    y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
 
             if key:
                 batch_loss = loss(y_batch_pred, y_batch)
-                log.log_loss(batch_loss.data.cpu().numpy()[0], key)
+                log.log_loss(batch_loss.item(), key)
             # Infer prediction shape
             y_batch_pred = y_batch_pred.data
             if r == 0:
