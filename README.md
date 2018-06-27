@@ -26,7 +26,7 @@ First, data has to be converted into the required format. `DataParser.py` takes 
 - **[dest]**  Path to output destination. This path must contain two folders
                named 0 and 1
 
-The function will create two files for each ORF present in te genome. `*_seq.npy` is the binary image of 30 nucleotide covering the Shine-Dalgarno region  [-20,10]. `*_reads.npy` contains a vector with the riboseq coverage signal for each ORF. For each ORFs present in the gff/gtf file (feature column annotated as CDS) a positive label is attributed. All samples will accordingly be be listed under `<dest>/0` (negative label) or `<dest>/1` (positive label).`<dest>/data_list.csv` contains a list of all samples with metadata. This file will be read and processed by the custom data loader used by `DeepRibo.py`. The parsed data of multiple datasets should all be present in one folder, according to the following structure:
+The function will create two files for each ORF present in te genome. `*_seq.pt` is the binary image of 30 nucleotide covering the Shine-Dalgarno region  [-20,10]. `*_reads.pt` contains a vector with the riboseq coverage signal for each ORF. For each ORFs present in the gff/gtf file (feature column annotated as CDS) a positive label is attributed. All samples will accordingly be be listed under `<dest>/0` (negative label) or `<dest>/1` (positive label).`<dest>/data_list.csv` contains a list of all samples with metadata. This file will be read and processed by the custom data loader used by `DeepRibo.py`. The parsed data of multiple datasets should all be present in one folder, according to the following structure:
 
 ------------
     DATA
@@ -94,7 +94,7 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 ### Training a model
 
-`python DeepRibo.py train ../data/processed --train_data ecoli salmonella --test_data bacillus --tr_rpkm 0.0 0.0 --tr_cov 0.0 0.0 --te_rpkm 0.0 --te_cov 0.0 --dest models/my_model.pt -b 16 --GPU`
+`python DeepRibo.py train ../data/processed --train_data ecoli salmonella valid_size 0.05 --tr_rpkm 0.0 0.0 --tr_cov 0.0 0.0 --dest ../models/my_model.pt -b 16 --GPU`
 
 **DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model. Notice how the flags for minimum RPKM `--tr_rpkm` and coverage `tr_cov` for the training data have listed two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
 
