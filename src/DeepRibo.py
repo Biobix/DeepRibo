@@ -85,7 +85,7 @@ class CustomLoader(Dataset):
 
 
 class DualComplex(FitModule):
-    def __init__(self, hidden_size, layers, bidirect=False):
+    def __init__(self, motif_count, hidden_size, layers, bidirect, nodes):
         """The DeepRibo model architecture
 
         Arguments:
@@ -98,14 +98,23 @@ class DualComplex(FitModule):
                           num_layers=layers, bidirectional=bidirect)
         self.layers = layers
         self.hidden_size = hidden_size
-        self.input_len = 30
+        self.motif_count = motif_count
+        self.in_len = 30
         self.bi = 2**bidirect
+        self.nodes_0 = self.hidden_size*layers*self.bi + math.ceil((self.in_len-11)*self.motif_count)
+        nodes.append(2)
+        nodes.insert(0, self.nodes_0)
         self.conv_ch_1 = nn.Conv2d(4, 4, (1, 1))
-        self.conv1 = nn.Conv2d(4, 32, (12, 1))
-        self.fc1 = nn.Linear(self.hidden_size*layers*self.bi +
-                             math.ceil((((self.input_len-11)))*32), 1024)
-        self.fc2 = nn.Linear(1024, 512)
-        self.fc3 = nn.Linear(512, 2)
+        self.conv1 = nn.Conv2d(4, self.motif_count, (12, 1))
+        fc = []
+        for i in range(len(nodes)-2):
+            fc.append(nn.Linear(nodes[i], nodes[i+1]))
+            fc.append(nn.ReLU())
+        fc.append(nn.Linear(nodes[-2], nodes[-1]))
+        self.fc = nn.Sequential(*fc)
+        #self.fc1 = nn.Linear(self.nodes_0, 1024)
+        #self.fc2 = nn.Linear(1024, 512)
+        #self.fc3 = nn.Linear(512, 2)
 
     def forward(self, x, hidden=None):
         # the input x is a tuple containing the DNA sequence data ([0])
@@ -118,13 +127,13 @@ class DualComplex(FitModule):
 
         x = F.relu(self.conv_ch_1(x))
         x = F.relu(self.conv1(x))
-        x = x.view(-1, math.ceil((((self.input_len-11)))*32))
+        x = x.view(-1, math.ceil((((self.in_len-11)))*self.motif_count))
 
         x = torch.cat([x, hidden], dim=1).contiguous()
-
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.fc(x)
+        #x = F.relu(self.fc1(x))
+        #x = F.relu(self.fc2(x))
+        #x = self.fc3(x)
 
         return x, hidden
 
@@ -185,7 +194,8 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
 
 
 def trainModel(data_path, train_data, valid_size, train_cutoff,
-               dest, batch_size, epochs, GPU):
+               dest, batch_size, epochs, hidden_size, motif_count, nodes,
+               GPU):
     """Trains the model using DeepRibo methodology
 
     Arguments:
@@ -212,6 +222,8 @@ def trainModel(data_path, train_data, valid_size, train_cutoff,
     print("{} samples in valid data".format(len(valid_loader.sampler)))
 
     hidden_size = 128
+    motif_count = 32
+    nodes = [1024, 512]
 
     if GPU:
         device = torch.device('cuda')
@@ -221,7 +233,7 @@ def trainModel(data_path, train_data, valid_size, train_cutoff,
     ratio = sum(train_loader.dataset.y_train)/len(train_loader.dataset.y_train)
     weights = torch.FloatTensor([ratio, 1-ratio]).to(device)
     # initialize model
-    model = DualComplex(hidden_size, 2, True)
+    model = DualComplex(motif_count, hidden_size, 2, True, nodes)
     model.to(device)
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
@@ -237,7 +249,7 @@ def trainModel(data_path, train_data, valid_size, train_cutoff,
 
 
 def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
-            GPU):
+            hidden_size, motif_count, nodes, GPU):
     """Uses the model for predictions
 
     Arguments:
@@ -292,7 +304,8 @@ class ParseArgs(object):
 
         def train(self):
             parser = argparse.ArgumentParser(
-                            description='Train a model')
+                       description='Train a model',
+                       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             # TWO argvs, ie the command (git) and the subcommand (commit)
             parser.add_argument('data_path', type=str,
                                 help="path containing the data folders for "
@@ -317,17 +330,29 @@ class ParseArgs(object):
                                 help="training batch size")
             parser.add_argument('-e', '--epochs', default=20, type=int,
                                 help="training epochs")
+            parser.add_argument('-g', '--GRU_nodes', default=128, type=int,
+                                help="size of the hidden state of the GRU "
+                                "unit")
+            parser.add_argument('-m', '--COV_motifs', default=32, type=int,
+                                help="amount of motifs (conv kernels) used "
+                                "by the convolutional layer")
+            parser.add_argument('-n', '--FC_nodes', default=[1024, 512],
+                                type=int, nargs='+', help="nodes per layer "
+                                "present in the fully connected layers of "
+                                "DeepRibo")
             parser.add_argument('--GPU', action="store_true", help=""
                                 "use of GPU (RECOMMENDED)")
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
             trainModel(args.data_path, args.train_data, args.valid_size,
                        (args.rpkm, args.coverage), args.dest,
-                       args.batch_size, args.epochs, args.GPU)
+                       args.batch_size, args.epochs, args.GRU_nodes,
+                       args.COV_motifs, args.FC_nodes, args.GPU)
 
         def predict(self):
             parser = argparse.ArgumentParser(
-                        description='Create predictions using a trained model')
+                        description='Create predictions using a trained model',
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             parser.add_argument('data_path', type=str,
                                 help="path containing the data folders for"
                                 " predictions")
@@ -342,18 +367,29 @@ class ParseArgs(object):
                                 required=True, help="minimum cutoff of "
                                 "coverage value to filter the data used for "
                                 "predictions order")
-            parser.add_argument('-m', '--model', type=str, required=True,
+            parser.add_argument('-M', '--model', type=str, required=True,
                                 help="path to the trained model")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 required=True, help="path to file in which "
                                 "predictions are saved")
+            parser.add_argument('-g', '--GRU_nodes', default=128, type=int,
+                                help="size of the hidden state of the GRU "
+                                "unit")
+            parser.add_argument('-m', '--COV_motifs', default=32, type=int,
+                                help="amount of motifs (conv kernels) used "
+                                "by the convolutional layer")
+            parser.add_argument('-n', '--FC_nodes', default=[1024, 512],
+                                type=int, nargs='+', help="nodes per layer "
+                                "present in the fully connected layers of "
+                                "DeepRibo")
             parser.add_argument('--GPU', action="store_true",
                                 help="use of GPU")
             args = parser.parse_args(sys.argv[2:])
             print('Creating predictions using model {}'.format(args.model))
             predict(args.data_path, [args.pred_data],
                     ([args.rpkm], [args.coverage]), args.model,
-                    args.dest, 32, args.GPU)
+                    args.dest, 256, args.GRU_nodes, args.COV_motifs,
+                    args.FC_nodes, args.GPU)
 
 
 if __name__ == "__main__":

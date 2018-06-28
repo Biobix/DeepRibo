@@ -155,7 +155,7 @@ def parseData(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path,
 
         temp = pd.Series(start_sites)
         temp_stop = pd.Series(stop_sites)
-        labels_stop = temp_stop.isin(gff_temp[4]+1)
+        labels_stop = temp_stop.isin(gff_temp[4]-2)
         labels_start = temp.isin(gff_temp[3])
         labels = np.logical_and(labels_stop,
                                 labels_start).values.astype(np.int)
