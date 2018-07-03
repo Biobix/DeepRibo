@@ -229,30 +229,42 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
         valid_sampler = SubsetRandomSampler(valid_idx)
         train_sampler = SubsetRandomSampler(train_idx)
         valid_loader = DataLoader(data,
-                                  batch_size=batch_size,
+                                  batch_size=512,
                                   sampler=valid_sampler,
                                   num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
-        train_loader = DataLoader(data,
-                                  batch_size=batch_size,
-                                  sampler=train_sampler,
-                                  num_workers=num_workers,
-                                  collate_fn=defaultCollate,
-                                  pin_memory=pin_memory)
+        train_loader_train = DataLoader(data,
+                                        batch_size=batch_size,
+                                        sampler=train_sampler,
+                                        num_workers=num_workers,
+                                        collate_fn=defaultCollate,
+                                        pin_memory=pin_memory)
+        train_loader_pred = DataLoader(data,
+                                       batch_size=512,
+                                       sampler=train_sampler,
+                                       num_workers=num_workers,
+                                       collate_fn=defaultCollate,
+                                       pin_memory=pin_memory)
 
-        return train_loader, valid_loader
+        return train_loader_train, train_loader_pred, valid_loader
 
     else:
         train_sampler = SubsetRandomSampler(idx)
-        train_loader = DataLoader(data,
-                                  batch_size=batch_size,
-                                  sampler=train_sampler,
-                                  num_workers=num_workers,
-                                  collate_fn=defaultCollate,
-                                  pin_memory=pin_memory)
+        train_loader_train = DataLoader(data,
+                                        batch_size=batch_size,
+                                        sampler=train_sampler,
+                                        num_workers=num_workers,
+                                        collate_fn=defaultCollate,
+                                        pin_memory=pin_memory)
+        train_loader_pred = DataLoader(data,
+                                       batch_size=512,
+                                       sampler=train_sampler,
+                                       num_workers=num_workers,
+                                       collate_fn=defaultCollate,
+                                       pin_memory=pin_memory)
 
-        return train_loader
+        return train_loader_train, train_loader_pred
 
 
 def trainModel(args, data_path, train_data, valid_size, train_cutoff,
@@ -278,7 +290,7 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
-    train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
+    train_loader, train_loader_pred, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
                                               batch_size, num_workers, GPU, valid_size)
     print("{} samples in train data".format(len(train_loader.sampler)))
     print("{} samples in valid data".format(len(valid_loader.sampler)))
@@ -307,7 +319,7 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
     # record loss, accuracy, AUC, PR-AUC on test set
     log = Logger(vars(args), ["loss", "AUC", "P-R", "acc"], False, valid_keys)
     # train the model
-    model.fit(device, train_loader, valid_loaders=[valid_loader], valid_keys=valid_keys,
+    model.fit(device, [train_loader, train_loader_pred], valid_loaders=[valid_loader], valid_keys=valid_keys,
               scheduler=scheduler, epochs=epochs, loss=loss,
               optimizer=optimizer, log=log, dest=dest, GPU=GPU, verbose=verbose)
 
