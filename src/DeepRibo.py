@@ -1,4 +1,3 @@
-import math
 import sys
 import argparse
 import numpy as np
@@ -10,7 +9,8 @@ from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
-from functions import FitModule, defaultCollate, Logger, Adam, extendLib
+from functions import FitModule, defaultCollate, Logger, Adam, extendLib,\
+       str2bool
 
 
 class CustomLoader(Dataset):
@@ -29,7 +29,6 @@ class CustomLoader(Dataset):
         """
         self.data_path = data_path
         data_list = ["{}/{}/data_list.csv".format(data_path, d) for d in data]
-        print(data_list)
         # load all data in dataframe
         tmp_df = pd.concat([pd.read_csv(dl) for dl in data_list])
         self.list = tmp_df
@@ -95,13 +94,13 @@ class DualComplex(FitModule):
         """
         super(DualComplex, self).__init__()
         self.gru = nn.GRU(1, hidden_size=hidden_size,
-                          num_layers=layers, bidirectional=bidirect)
+                          num_layers=layers, dropout=0.3, bidirectional=bidirect)
         self.layers = layers
         self.hidden_size = hidden_size
         self.motif_count = motif_count
         self.in_len = 30
         self.bi = 2**bidirect
-        self.nodes_0 = self.hidden_size*layers*self.bi + math.ceil((self.in_len-11)*self.motif_count)
+        self.nodes_0 = self.hidden_size*layers*self.bi + (self.in_len-11)*self.motif_count
         nodes.append(2)
         nodes.insert(0, self.nodes_0)
         self.conv_ch_1 = nn.Conv2d(4, 4, (1, 1))
@@ -112,9 +111,6 @@ class DualComplex(FitModule):
             fc.append(nn.ReLU())
         fc.append(nn.Linear(nodes[-2], nodes[-1]))
         self.fc = nn.Sequential(*fc)
-        #self.fc1 = nn.Linear(self.nodes_0, 1024)
-        #self.fc2 = nn.Linear(1024, 512)
-        #self.fc3 = nn.Linear(512, 2)
 
     def forward(self, x, hidden=None):
         # the input x is a tuple containing the DNA sequence data ([0])
@@ -127,18 +123,84 @@ class DualComplex(FitModule):
 
         x = F.relu(self.conv_ch_1(x))
         x = F.relu(self.conv1(x))
-        x = x.view(-1, math.ceil((((self.in_len-11)))*self.motif_count))
-
+        x = x.view(-1, (self.in_len-11)*self.motif_count)
         x = torch.cat([x, hidden], dim=1).contiguous()
         x = self.fc(x)
-        #x = F.relu(self.fc1(x))
-        #x = F.relu(self.fc2(x))
-        #x = self.fc3(x)
 
         return x, hidden
 
 
-def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
+class CNNComplex(FitModule):
+    def __init__(self, motif_count, nodes):
+        """The DeepRibo model architecture
+
+        Arguments:
+            hidden_size (int): weights allocated to the GRU
+            layers (int): amount of GRU layers
+            bidirect (bool): model uses a bidirectional GRU
+        """
+        super(CNNComplex, self).__init__()
+        self.motif_count = motif_count
+        self.in_len = 30
+        self.nodes_0 = (self.in_len-11)*self.motif_count
+        nodes.append(2)
+        nodes.insert(0, self.nodes_0)
+        self.conv_ch_1 = nn.Conv2d(4, 4, (1, 1))
+        self.conv1 = nn.Conv2d(4, self.motif_count, (12, 1))
+        fc = []
+        for i in range(len(nodes)-2):
+            fc.append(nn.Linear(nodes[i], nodes[i+1]))
+            fc.append(nn.ReLU())
+        fc.append(nn.Linear(nodes[-2], nodes[-1]))
+        self.fc = nn.Sequential(*fc)
+
+    def forward(self, x, hidden=None):
+        x = F.relu(self.conv_ch_1(x[0]))
+        x = F.relu(self.conv1(x))
+        x = x.view(-1, (self.in_len-11)*self.motif_count)
+        x = self.fc(x)
+
+        return x, hidden
+
+
+class RNNComplex(FitModule):
+    def __init__(self, hidden_size, layers, bidirect, nodes):
+        """The DeepRibo model architecture
+
+        Arguments:
+            hidden_size (int): weights allocated to the GRU
+            layers (int): amount of GRU layers
+            bidirect (bool): model uses a bidirectional GRU
+        """
+        super(RNNComplex, self).__init__()
+        self.gru = nn.GRU(1, hidden_size=hidden_size,
+                          num_layers=layers, dropout=0.3, bidirectional=bidirect)
+        self.layers = layers
+        self.hidden_size = hidden_size
+        self.in_len = 30
+        self.bi = 2**bidirect
+        self.nodes_0 = self.hidden_size*layers*self.bi
+        nodes.append(2)
+        nodes.insert(0, self.nodes_0)
+        fc = []
+        for i in range(len(nodes)-2):
+            fc.append(nn.Linear(nodes[i], nodes[i+1]))
+            fc.append(nn.ReLU())
+        fc.append(nn.Linear(nodes[-2], nodes[-1]))
+        self.fc = nn.Sequential(*fc)
+
+    def forward(self, x, hidden=None):
+        y = x[1]
+        y, hidden = self.gru(y)
+        hidden = hidden.transpose(0, 1).contiguous()
+        hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi).contiguous()
+
+        x = self.fc(hidden)
+
+        return x, hidden
+
+
+def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
                  valid_size=0):
     """Loads data using a custom loader
 
@@ -169,13 +231,13 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
         valid_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=valid_sampler,
-                                  num_workers=0,
+                                  num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
         train_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
-                                  num_workers=0,
+                                  num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
 
@@ -186,16 +248,16 @@ def loadDatabase(data_path, data, cutoff, batch_size, pin_memory=False,
         train_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=train_sampler,
-                                  num_workers=0,
+                                  num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
 
         return train_loader
 
 
-def trainModel(data_path, train_data, valid_size, train_cutoff,
-               dest, batch_size, epochs, hidden_size, motif_count, nodes,
-               GPU):
+def trainModel(args, data_path, train_data, valid_size, train_cutoff,
+               dest, batch_size, epochs, hidden_size, layers, bidirect, motif_count, nodes,
+               model_type, num_workers, GPU, verbose):
     """Trains the model using DeepRibo methodology
 
     Arguments:
@@ -217,13 +279,9 @@ def trainModel(data_path, train_data, valid_size, train_cutoff,
         GPU (bool): trains model using a GPU
     """
     train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
-                                              batch_size, GPU, valid_size)
+                                              batch_size, num_workers, GPU, valid_size)
     print("{} samples in train data".format(len(train_loader.sampler)))
     print("{} samples in valid data".format(len(valid_loader.sampler)))
-
-    hidden_size = 128
-    motif_count = 32
-    nodes = [1024, 512]
 
     if GPU:
         device = torch.device('cuda')
@@ -233,23 +291,30 @@ def trainModel(data_path, train_data, valid_size, train_cutoff,
     ratio = sum(train_loader.dataset.y_train)/len(train_loader.dataset.y_train)
     weights = torch.FloatTensor([ratio, 1-ratio]).to(device)
     # initialize model
-    model = DualComplex(motif_count, hidden_size, 2, True, nodes)
+    if model_type == 'CNNRNN':
+        model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
+    if model_type == 'CNN':
+        model = CNNComplex(motif_count, nodes)
+    else:
+        model = RNNComplex(hidden_size, layers, bidirect, nodes)
     model.to(device)
+    # nn.DataParallel(model, device_ids=[2, 0])
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
     scheduler = StepLR(optimizer, 10, gamma=0.1)
     # key under which performance measures are saved
     valid_keys = ["valid_data"]
     # record loss, accuracy, AUC, PR-AUC on test set
-    log = Logger(["loss", "AUC", "P-R", "acc"], False, valid_keys)
+    log = Logger(vars(args), ["loss", "AUC", "P-R", "acc"], False, valid_keys)
     # train the model
     model.fit(device, train_loader, valid_loaders=[valid_loader], valid_keys=valid_keys,
               scheduler=scheduler, epochs=epochs, loss=loss,
-              optimizer=optimizer, log=log, dest=dest, GPU=GPU)
+              optimizer=optimizer, log=log, dest=dest, GPU=GPU, verbose=verbose)
 
 
 def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
-            hidden_size, motif_count, nodes, GPU):
+            hidden_size, layers, bidirect, motif_count, nodes, model_type,
+            num_workers, GPU, verbose):
     """Uses the model for predictions
 
     Arguments:
@@ -270,14 +335,17 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
-    hidden_size = 128
-
     pred_loader = loadDatabase(data_path, pred_data, pred_cutoff, batch_size,
-                               True)
-    model = DualComplex(hidden_size, 2, True)
+                               num_workers, GPU, verbose)
+    if model_type == 'CNNRNN':
+        model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
+    if model_type == 'CNN':
+        model = CNNComplex(motif_count, nodes)
+    else:
+        model = RNNComplex(hidden_size, layers, bidirect, nodes)
 
     model.load_state_dict(torch.load(model_name))
-    pred, true = model.predict(pred_loader, GPU=GPU)
+    pred, true = model.predict(pred_loader, GPU=GPU, verbose=verbose)
     df_pred = extendLib(pred_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 
@@ -313,7 +381,8 @@ class ParseArgs(object):
             parser.add_argument('--train_data', default='[]', nargs='+',
                                 type=str, required=True, help="train data "
                                 "folder names present in the data path")
-            parser.add_argument('--valid_size', nargs='*', type=int, default=0.05,
+            parser.add_argument('--valid_size', type=float,
+                                default=0.05,
                                 help="percentage of train used as valid"
                                 "data")
             parser.add_argument('-r', '--rpkm', nargs='+', type=float,
@@ -326,13 +395,19 @@ class ParseArgs(object):
                                 ", these are given in the same order.")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 help="path to which the model is saved")
-            parser.add_argument('-b', '--batch_size', type=int, default=32,
+            parser.add_argument('-b', '--batch_size', type=int, default=256,
                                 help="training batch size")
             parser.add_argument('-e', '--epochs', default=20, type=int,
                                 help="training epochs")
             parser.add_argument('-g', '--GRU_nodes', default=128, type=int,
                                 help="size of the hidden state of the GRU "
                                 "unit")
+            parser.add_argument('-l', '--GRU_layers', default=2,
+                                choices=[1, 2], type=int, help="amount of "
+                                "sequential GRU layers")
+            parser.add_argument('-B', '--GRU_bidirect', type=str2bool, nargs='?',
+                                const=True, default=True, help="use of "
+                                "bidirectional GRU units")
             parser.add_argument('-m', '--COV_motifs', default=32, type=int,
                                 help="amount of motifs (conv kernels) used "
                                 "by the convolutional layer")
@@ -340,14 +415,24 @@ class ParseArgs(object):
                                 type=int, nargs='+', help="nodes per layer "
                                 "present in the fully connected layers of "
                                 "DeepRibo")
-            parser.add_argument('--GPU', action="store_true", help=""
+            parser.add_argument('--model_type', default='CNNRNN', type=str,
+                                choices=['CNNRNN', 'CNN', 'RNN'], help=""
+                                "Use CNNRNN, CNN or RNN architecture")
+            parser.add_argument('--num_workers', default=0, type=int,
+                                help="numbers of CPU units used for data"
+                                "loading")
+            parser.add_argument('--GPU', action='store_true', help=""
                                 "use of GPU (RECOMMENDED)")
+            parser.add_argument('-v', '--verbose', action='store_true', help=""
+                                "more detailed progress bar")
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
-            trainModel(args.data_path, args.train_data, args.valid_size,
+            trainModel(args, args.data_path, args.train_data, args.valid_size,
                        (args.rpkm, args.coverage), args.dest,
                        args.batch_size, args.epochs, args.GRU_nodes,
-                       args.COV_motifs, args.FC_nodes, args.GPU)
+                       args.GRU_layers, args.GRU_bidirect, args.COV_motifs,
+                       args.FC_nodes, args.model_type, args.num_workers,
+                       args.GPU, args.verbose)
 
         def predict(self):
             parser = argparse.ArgumentParser(
@@ -375,6 +460,12 @@ class ParseArgs(object):
             parser.add_argument('-g', '--GRU_nodes', default=128, type=int,
                                 help="size of the hidden state of the GRU "
                                 "unit")
+            parser.add_argument('-l', '--GRU_layers', default=2, choices=[1, 2],
+                                type=str, help="amount of sequential GRU "
+                                "layers")
+            parser.add_argument('-B', '--GRU_bidirect', default=True,
+                                type=bool, help="use of bidirectional GRU "
+                                "units")
             parser.add_argument('-m', '--COV_motifs', default=32, type=int,
                                 help="amount of motifs (conv kernels) used "
                                 "by the convolutional layer")
@@ -382,14 +473,24 @@ class ParseArgs(object):
                                 type=int, nargs='+', help="nodes per layer "
                                 "present in the fully connected layers of "
                                 "DeepRibo")
-            parser.add_argument('--GPU', action="store_true",
-                                help="use of GPU")
+            parser.add_argument('--model_type', default='CNNRNN', type=str,
+                                choices=['CNNRNN', 'CNN', 'RNN'], help=""
+                                "Use CNNRNN, CNN or RNN architecture")
+            parser.add_argument('--num_workers', default=0, type=int,
+                                help="numbers of CPU units used for data"
+                                "loading")
+            parser.add_argument('--GPU', action='store_true', help=""
+                                "use of GPU")
+            parser.add_argument('-v', '--verbose', action='store_true', help=""
+                                "more detailed progress bar")
             args = parser.parse_args(sys.argv[2:])
             print('Creating predictions using model {}'.format(args.model))
             predict(args.data_path, [args.pred_data],
                     ([args.rpkm], [args.coverage]), args.model,
-                    args.dest, 256, args.GRU_nodes, args.COV_motifs,
-                    args.FC_nodes, args.GPU)
+                    args.dest, 1024, args.GRU_nodes, args.GRU_layers,
+                    args.GRU_bidirect, args.COV_motifs, args.FC_nodes,
+                    args.model_type, args.num_workers, args.GPU,
+                    args.verbose)
 
 
 if __name__ == "__main__":

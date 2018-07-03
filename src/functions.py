@@ -1,5 +1,7 @@
 import collections
 import re
+import datetime as dt
+import argparse
 from fitmodule.utils import ProgressBar
 import math
 import numpy as np
@@ -228,8 +230,16 @@ def extendLib(df, pred):
     return df
 
 
-class FitModule(Module):
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
+
+class FitModule(Module):
     def fit(self, device, train_loader, test_loader=None, valid_loaders=None,
             valid_keys=None, scheduler=None, epochs=50, initial_epoch=0,
             seed=None, loss=None, optimizer=None, log=None, dest='default',
@@ -263,6 +273,7 @@ class FitModule(Module):
         Returns:
             Logger object with training metrics
         '''
+        ts = dt.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         if seed and seed >= 0:
             torch.manual_seed(seed)
         # Prepare test data
@@ -280,12 +291,11 @@ class FitModule(Module):
                 scheduler.step()
             print('Epoch {0} / {1}'.format(t+1, epochs))
             # Setup Logger
-            if verbose:
-                pb = ProgressBar(len(train_loader))
+            pb = ProgressBar(len(train_loader), verbose=verbose)
             epoch_loss = 0.0
             # Run batches
             self.train()
-            for batch_i, b_data in enumerate(train_loader):
+            for b_i, b_data in enumerate(train_loader):
                 # Backprop
                 opt.zero_grad()
 
@@ -304,32 +314,35 @@ class FitModule(Module):
                 epoch_loss += batch_loss.item()
                 log.log_loss(batch_loss.item())
 
-                if verbose:
-                    pb.bar(batch_i, log.output_metric())
+                pb.bar(b_i, log.output_metric())
             # Run metrics
-            y_pred, y_true = self.predict(device, train_loader, log=log, GPU=GPU)
+            y_pred, y_true = self.predict(device, train_loader, log=log,
+                                          GPU=GPU, verbose=verbose)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
             if test_loader is not None:
                 y_pred, y_true = self.predict(device, test_loader, loss=loss,
-                                              key='test', log=log, GPU=GPU)
+                                              key='test', log=log, GPU=GPU,
+                                              verbose=verbose)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                 'test')
             if valid_loaders is not None:
                 for valid_loader, valid_key in zip(valid_loaders, valid_keys):
-                    y_pred, y_true = self.predict(device, valid_loader, loss=loss,
-                                                  key=valid_key, log=log,
-                                                  GPU=GPU)
+                    y_pred, y_true = self.predict(device, valid_loader,
+                                                  loss=loss, key=valid_key,
+                                                  log=log, GPU=GPU,
+                                                  verbose=verbose)
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                     valid_key)
-            if verbose:
-                pb.close()
-            torch.save(self, '{}_epoch_{}.pt'.format(dest, t))
-            with open('{}_{}.json'.format(dest, t), 'w') as fp:
+            pb.close()
+            torch.save(self.state_dict(), '{}_{}_epoch_{}.pt'.format(dest, ts,
+                                                                     t))
+            with open('{}_{}_{}.json'.format(dest, ts, t), 'w') as fp:
                 json.dump(log.metrics, fp)
             log.output_metrics()
         return log
 
-    def predict(self, device, loader, loss=None, key=None, log=None, GPU=False):
+    def predict(self, device, loader, loss=None, key=None, log=None, GPU=False,
+                verbose=False):
         '''Generates output predictions for the input samples.
         Computation is done in batches.
 
@@ -355,7 +368,8 @@ class FitModule(Module):
         if loader.sampler:
             n = len(loader.sampler)
         batch_size = loader.batch_size
-        for b_data in loader:
+        pb = ProgressBar(len(loader), verbose=verbose)
+        for b_i, b_data in enumerate(loader):
             # Predict on batch
             with torch.no_grad():
                 sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
@@ -378,11 +392,13 @@ class FitModule(Module):
             y_pred[r: min(n, r + batch_size)] = y_batch_pred
             y_true[r: min(n, r + batch_size)] = y_batch.data
             r += batch_size
+            pb.bar(b_i, log.output_metric())
+
         return y_pred, y_true
 
 
 class Logger(object):
-    def __init__(self, metrics, test=True, valid_keys=None):
+    def __init__(self, args, metrics, test=True, valid_keys=None):
         '''Object which stores and calculates metrics produced by a neural
         network during training
 
@@ -415,9 +431,10 @@ class Logger(object):
             self.log_p_r = True
             for key in self.metrics:
                 self.metrics[key].update({'p-r': []})
-
-        for key in self.metrics:
+        self.keys = list(self.metrics.keys())
+        for key in self.keys:
             self.metrics[key].update({'loss': [0]})
+        self.metrics['args'] = args
 
     def log_loss(self, loss, key='train'):
         '''Logs loss metric
@@ -463,7 +480,7 @@ class Logger(object):
         '''Prints last recorded values of all metrics
         '''
         print('')
-        for key in sorted(self.metrics):
+        for key in sorted(self.keys):
             print('{}:'.format(key), end='')
             for k, v in self.metrics[key].items():
                 print('\t{}: {:5.3f}'.format(k, v[-1]), end='')
