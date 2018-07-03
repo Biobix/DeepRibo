@@ -1,13 +1,12 @@
+import sys
 import collections
 import re
 import datetime as dt
 import argparse
-from fitmodule.utils import ProgressBar
 import math
 import numpy as np
 import torch
 import json
-from torch.autograd import Variable
 from torch.optim import Optimizer
 from torch.nn import Module
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -273,6 +272,8 @@ class FitModule(Module):
         Returns:
             Logger object with training metrics
         '''
+        train_loader_pred = train_loader[1]
+        train_loader = train_loader[0]
         ts = dt.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         if seed and seed >= 0:
             torch.manual_seed(seed)
@@ -316,7 +317,7 @@ class FitModule(Module):
 
                 pb.bar(b_i, log.output_metric())
             # Run metrics
-            y_pred, y_true = self.predict(device, train_loader, log=log,
+            y_pred, y_true = self.predict(device, train_loader_pred, log=log,
                                           GPU=GPU, verbose=verbose)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
             if test_loader is not None:
@@ -393,6 +394,7 @@ class FitModule(Module):
             y_true[r: min(n, r + batch_size)] = y_batch.data
             r += batch_size
             pb.bar(b_i, log.output_metric())
+        pb.close()
 
         return y_pred, y_true
 
@@ -485,3 +487,36 @@ class Logger(object):
             for k, v in self.metrics[key].items():
                 print('\t{}: {:5.3f}'.format(k, v[-1]), end='')
             print('\n', end='')
+
+
+class ProgressBar(object):
+    """Cheers @ajratner"""
+
+    def __init__(self, n, length=40, verbose=True):
+        # Protect against division by zero
+        self.n = max(1, n)
+        self.nf = float(n)
+        self.length = length
+        self.verbose = verbose
+        # Precalculate the i values that should trigger a write operation
+        self.ticks = [round(i/100.0 * n) for i in range(101)]
+        self.ticks.append(n-1)
+        self.bar(0)
+
+    def bar(self, i, message=""):
+        """Assumes i ranges through [0, n-1]"""
+        if i in self.ticks:
+            if self.verbose:
+                b = int(np.ceil(((i+1) / self.nf) * self.length))
+                sys.stdout.write("\r[{0}{1}] {2}%\t{3}".format(
+                    "="*b, " "*(self.length-b), int(100*((i+1) / self.nf)),
+                    message))
+            else:
+                sys.stdout.write("=")
+            sys.stdout.flush()
+
+    def close(self, message=""):
+        # Move the bar to 100% before closing
+        self.bar(self.n-1)
+        sys.stdout.write("{0}\n".format(message))
+        sys.stdout.flush()
