@@ -1,10 +1,10 @@
 # DeepRibo
 
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. It is strongly recommended to use GPU infrastructure for training new models using DeepRibo. 
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. This package allows for the user to train their own models using custom data and custom architectures. It is strongly recommended to use GPU infrastructure for training new models using DeepRibo. 
 
 # Installation
 
-To use DeepRibo, simply clone this repository in your working directory and install the necessary libraries:
+To use DeepRibo, simply clone the repository in your working directory and install the necessary python libraries:
 
 	git clone https://github.com/Biobix/DeepRibo.git
 	conda env create -f environment.yml
@@ -12,31 +12,49 @@ To use DeepRibo, simply clone this repository in your working directory and inst
 
 # User Guide
 
-`src/DataParser.py` and `src/DeepRibo.py` are the main scripts from which all functions can be executed. For more information about these functions, use the  `-h` flag.
+`src/DataParser.py` and `src/DeepRibo.py` are the main scripts from which all functionalities can be accessed. More information about these functions can be accessed using the `-h` flag.
 
 ## Parsing Data
-First, data has to be converted into the required format. `DataParser.py` takes care of this with minimal effort. Several files are required to successfully parse the data:
 
-- **[sense_cov]**    Path to .bedgraph containing sense riboseq data (coverage)
-- **[asense_cov]**   Path to .bedgraph containing antisense riboseq data (coverage)
-- **[sense_elo]**    Path to .bedgraph containing sense riboseq data (elongating)
-- **[asense_elo]**   Path to .bedgraph containing antisense riboseq data (elongating)
-- **[fasta]**        Path to .fasta/.fa containing genome sequence
-- **[gtf]**      Path to .gtf/.gff containing annotation
-- **[dest]**  Path to output destination. This path must contain two folders
-               named 0 and 1
+----
+python DataParser.py -h
 
-The function will create two files for each ORF present in te genome. `*_seq.pt` is the binary image of 30 nucleotide covering the Shine-Dalgarno region  [-20,10]. `*_reads.pt` contains a vector with the riboseq coverage signal for each ORF. For each ORFs present in the gff/gtf file (feature column annotated as CDS) a positive label is attributed. All samples will accordingly be be listed under `<dest>/0` (negative label) or `<dest>/1` (positive label).`<dest>/data_list.csv` contains a list of all samples with metadata. This file will be read and processed by the custom data loader used by `DeepRibo.py`. The parsed data of multiple datasets should all be present in one folder, according to the following structure:
+	positional arguments:
+	  sense_cov             Path to bedgraph containing sense riboseq data
+				(elongating coverage)
+	  asense_cov            Path to bedgraph containing antisense riboseq data
+				(elongating coverage)
+	  sense_elo             Path to bedgraph containing sense riboseq data
+				(elongating A-site)
+	  asense_elo            Path to bedgraph containing antisense riboseq data
+				(elongating A-site)
+	  fasta                 Path to fasta containing genome sequence
+	  destination           Path to output destination. This path must contain two
+				folders named 0 and 1
 
-------------
+	optional arguments:
+	  -h, --help            show this help message and exit
+	  -g GTF, --gtf GTF     Path to gtf/gff containing annotation (default: None)
+	  -s START_TRIPS [START_TRIPS ...], --start_trips START_TRIPS [START_TRIPS ...]
+				list of tripletsconsidered as possible start codons
+				(default: ['ATG', 'GTG', 'TTG'])
+	  -p STOP_TRIPS [STOP_TRIPS ...], --stop_trips STOP_TRIPS [STOP_TRIPS ...]
+				list of tripletsconsidered as possible stop codons
+				(default: ['TAA', 'TGA', 'TAG'])
+----
+First, data has to be converted into the required format. `DataParser.py` takes care of this with minimal effort. Several files are required to successfully parse the data. In short, the ribosome profiling data of elongating ribosomes has to be compiled into four bedgraph files. These contain the coverage signals of all reads and the mapped A/P profiles (reads mapped to one site). DeepRibo makes predictions on all candidate ORFs present within a genome. Therefore, samples are generated by iterating over the genome an selecting regions delimited by any of the codons given by `--start_trips` and `--stop_trips`. When parsing a dataset for training purposes, an assembly file is necessary to create a set of positive samples (CDS entries). No assembly file is required for datasets on which predictions are made. However, the S-curve methodology uses the positive labels for the estimation of the cut-off values. In case no assembly file is available, a conservative cut-off value can be chosen by comparison with other datasets. As the exclusion of data is mainly important for training, it should not pose any major discrepancies between the predictions.    
+
+When running `Dataparser.py`, two filetypes for each ORF present in te genome are created. `*_seq.pt` is the pickled binary image of the 30 nucleotide region covering the Shine-Dalgarno region ([-20,10]). `*_reads.pt` contains a vector with the riboseq coverage signal for each ORF. For each ORF present in the gff/gtf file (feature column annotated as CDS) a positive label is attributed. All samples will accordingly be be listed under `<dest>/0` (negative label) or `<dest>/1` (positive label).`<dest>/data_list.csv` contains a list of all samples with metadata. This file will be read and processed by the custom data loader used by `DeepRibo.py`. The parsed data of multiple datasets should all be present in one folder, according to the following structure:
+
+----
     DATA
-    ├── ecoli
+    ├── ecoli (destination)
     │   ├── 0
     │   │   ├ ...
     │   ├── 1
     │   │   ├ ...
     │   ├── data_list.csv
-    ├── bacillus
+    ├── bacillus (destination)
     │   ├── 0
     │   │   ├ ...
     │   ├── 1
@@ -49,12 +67,62 @@ The function will create two files for each ORF present in te genome. `*_seq.pt`
 
 # Training a model
 
-After all data has been processed, a model can be trained. Any or all datasets present in the **DATA** folder can be used for training/testing. For more information about the function parameters simply use
+after all data has been processed, a model can be trained. Any combination of datasets present in the **DATA** folder can be used for training/testing. 
 
-`python DeepRibo.py train -h`
+----
+python DeepRibo.py train -h
 
-During training, the model's weights are saved after each epoch. A json object is furthermore created after training containing all of the performance metrics for the training/testing data. These performance metrics include the loss, acceracy, Area Under the Roc Curve (AUC-ROC) and Area under the Precision-Recall Curve (PR-AUC). When training the model, cut-off values for both the training data and test data, based upon the minimal coverage and RPKM values of each sample, are given to filter out data with low to non-existent signal (see [Full Article](.)). two cut-off values have to be given for each dataset used for training/testing, and are required to be in the same order. To obtain the right values for each dataset, an R script is provided. Make sure to install the SiZer package before use. The function `get_cutoff_values` is listed in `src/s_curve_cutoff_estimation.R`. Simply run the script with the required parameters to obtain these values after parsing the data. 
+	Train a model
 
+	positional arguments:
+	  data_path             path containing the data folders for training and
+				testing
+
+	optional arguments:
+	  -h, --help            show this help message and exit
+	  --train_data TRAIN_DATA [TRAIN_DATA ...]
+				train data folder names present in the data path
+				(default: [])
+	  --valid_size VALID_SIZE
+				percentage of train used as validdata (default: 0.05)
+	  -r RPKM [RPKM ...], --rpkm RPKM [RPKM ...]
+				minimum cutoff of RPKM values to filter the training
+				data (default: None)
+	  -c COVERAGE [COVERAGE ...], --coverage COVERAGE [COVERAGE ...]
+				minimum cutoff ofcoverage values to filter the
+				training data, these are given in the same order.
+				(default: None)
+	  -d DEST, --dest DEST  path to which the model is saved (default: pred)
+	  -b BATCH_SIZE, --batch_size BATCH_SIZE
+				training batch size (default: 256)
+	  -e EPOCHS, --epochs EPOCHS
+				training epochs (default: 20)
+	  -g GRU_NODES, --GRU_nodes GRU_NODES
+				size of the hidden state of the GRU unit (default:
+				128)
+	  -l {1,2}, --GRU_layers {1,2}
+				amount of sequential GRU layers (default: 2)
+	  -B [GRU_BIDIRECT], --GRU_bidirect [GRU_BIDIRECT]
+				use of bidirectional GRU units (default: True)
+	  -m COV_MOTIFS, --COV_motifs COV_MOTIFS
+				amount of motifs (conv kernels) used by the
+				convolutional layer (default: 32)
+	  -n FC_NODES [FC_NODES ...], --FC_nodes FC_NODES [FC_NODES ...]
+				nodes per layer present in the fully connected layers
+				of DeepRibo (default: [1024, 512])
+	  --model_type {CNNRNN,CNN,RNN}
+				Use CNNRNN, CNN or RNN architecture (default: CNNRNN)
+	  --num_workers NUM_WORKERS
+				numbers of CPU units used for dataloading (default: 0)
+	  --GPU                 use of GPU (RECOMMENDED) (default: False)
+	  -v, --verbose         more detailed progress bar (default: False)
+---
+
+During training, the model's weights are saved after each epoch in the destination folder `-d`. A json object is furthermore created containing all of the performance metrics for the training/testing data. These performance metrics include the cross-entropy loss, acceracy, Area Under the Roc Curve (AUC-ROC) and Area under the Precision-Recall Curve (PR-AUC). All of the model's parameters are furthermore saved in this file. When training the model, cut-off values for both the training data and test data, based upon the minimal coverage and RPKM values of each sample, are given to filter out data with low to non-existent signal (see [Full Article](.)). two cut-off values have to be given for each dataset used for training/testing (`r` and `c`), and are required to be in the same order as the dataset names given by `--train_data`. To obtain the right values for each dataset, an R script is provided. **Make sure to install the SiZer package before use**. The function `get_cutoff_values` is listed in `src/s_curve_cutoff_estimation.R`. Simply run the script with the required parameters to obtain these values after parsing the data. This function will not work with the mock data provided on this GitHub repository.
+
+Custom architectures of DeepRibo can be trained using a variety of parameters available when running `DeepRibo.py`. Specifically, `--GRU_nodes`, `--GRU_layers`, `--GRU_bidirect`, `--COV_motifs` and `--FC_nodes` can be used to set the hidden nodes of the GRU memory cell, the amount of layers, whether to use a bidirectional GRU, the amount of kernels used by the convolutional layer, and the amount of layers and nodes used in the fully connected layers of DeepRibo. The model type can be set using `--model_type`, making it possible to train a model using only the CNN or RNN partition of DeepRibo.
+
+---
 	# start R	
 	R
 	# load the functions from the script
@@ -65,15 +133,56 @@ During training, the model's weights are saved after each epoch. A json object i
 	  ....
 	$min_coverage
        	  ....
-
+---
  
 # Making predictions 
 
 Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
+---
+python DeepRibo.py predict -h
 
-`python DeepRibo.py predict -h`
+	Create predictions using a trained model
 
-The output file is an extension of the `data_list.csv` file created when parsing the data. For more information about each column check the **Supplementary Information and Figures** from the [Online Article](.)
+	positional arguments:
+	  data_path             path containing the data folders for predictions
+
+	optional arguments:
+	  -h, --help            show this help message and exit
+	  --pred_data PRED_DATA
+				data folder name present in the data path used to make
+				predictions on (default: None)
+	  -r RPKM, --rpkm RPKM  minimum cutoff of RPKM value to filter the data used
+				for predictions. (default: None)
+	  -c COVERAGE [COVERAGE ...], --coverage COVERAGE [COVERAGE ...]
+				minimum cutoff of coverage value to filter the data
+				used for predictions order (default: None)
+	  -M MODEL, --model MODEL
+				path to the trained model (default: None)
+	  -d DEST, --dest DEST  path to file in which predictions are saved (default:
+				pred)
+	  -g GRU_NODES, --GRU_nodes GRU_NODES
+				size of the hidden state of the GRU unit (default:
+				128)
+	  -l {1,2}, --GRU_layers {1,2}
+				amount of sequential GRU layers (default: 2)
+	  -B GRU_BIDIRECT, --GRU_bidirect GRU_BIDIRECT
+				use of bidirectional GRU units (default: True)
+	  -m COV_MOTIFS, --COV_motifs COV_MOTIFS
+				amount of motifs (conv kernels) used by the
+				convolutional layer (default: 32)
+	  -n FC_NODES [FC_NODES ...], --FC_nodes FC_NODES [FC_NODES ...]
+				nodes per layer present in the fully connected layers
+				of DeepRibo (default: [1024, 512])
+	  --model_type {CNNRNN,CNN,RNN}
+				Use CNNRNN, CNN or RNN architecture (default: CNNRNN)
+	  --num_workers NUM_WORKERS
+				numbers of CPU units used for dataloading (default: 0)
+	  --GPU                 use of GPU (default: False)
+	  -v, --verbose         more detailed progress bar (default: False)
+
+---
+
+The output file is an extension of the `data_list.csv` file created when parsing the data. More information about each column is provided in the **Supplementary Information and Figures** from the [Online Article](.). In case a custom model architecture was used to train a model, it is important to give this information to the script using the related arguments.
 
 # Pretrained models
 
