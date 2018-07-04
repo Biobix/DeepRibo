@@ -14,6 +14,7 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataloader import numpy_type_map
 from sklearn.metrics import average_precision_score, roc_auc_score
+from torch.utils.data.sampler import Sampler
 
 
 class Adam(Optimizer):
@@ -106,6 +107,48 @@ class Adam(Optimizer):
 
                 p.data.addcdiv_(-step_size, exp_avg, denom)
         return loss
+
+
+class BucketSampler(Sampler):
+    """Samples elements in buckets, bucketShuffle needs to be called every epoch.
+
+    Arguments:
+        data_source (Dataset): dataset to sample from
+        index (list/numpy): array with index locations
+        batch_size (int): batch size
+    """
+
+    def __init__(self, data_source, index, batch_size):
+        starts = data_source.loc[index, 'start_site']
+        stops = data_source.loc[index, 'stop_site']
+        self.lens = abs(starts-stops)
+        self.batch_size = batch_size
+        self.sort_idx = np.argsort(self.lens)
+        self.bucketShuffle()
+
+    def __iter__(self):
+        return iter(self.idx_list)
+
+    def __len__(self):
+        return len(self.lens)
+
+    def bucketShuffle(self):
+        # shuffle rows within regions
+        region_size = int(len(self.lens)/self.batch_size//12)
+        inc_batch_reg = len(self.lens) % region_size
+        index_list = np.array(self.sort_idx[inc_batch_reg:])
+        np.random.shuffle(np.reshape(index_list, (-1, region_size)).T)
+        shuffled_index = np.hstack((index_list, self.sort_idx[:inc_batch_reg]))
+
+        # shuffle batches within dataset
+        inc_batch = len(self.lens) % self.batch_size
+        shuffled_index_list = shuffled_index[inc_batch:]
+        np.random.shuffle(np.reshape(shuffled_index_list,
+                                     (-1, self.batch_size)))
+
+        # set dataset with new order
+        self.idx_list = np.hstack((shuffled_index_list,
+                                   shuffled_index[:inc_batch]))
 
 
 def aucFromTensors(y_hat, y_true):
@@ -287,8 +330,6 @@ class FitModule(Module):
             # Setup Logger
             pb = ProgressBar(len(train_loader), verbose=verbose)
             epoch_loss = 0.0
-            # Reorder input data
-            train_loader.dataset.bucketshuffle(train_loader.batch_size)
             # Run batches
             self.train()
             for b_i, b_data in enumerate(train_loader):
@@ -311,6 +352,8 @@ class FitModule(Module):
                 log.log_loss(batch_loss.item())
 
                 pb.bar(b_i, log.output_metric())
+            # Reshuffle bucket sampler
+            train_loader.batch_sampler.sampler.bucketShuffle()
             # Run metrics
             y_pred, y_true = self.predict(device, train_loader, log=log,
                                           GPU=GPU, verbose=verbose)
@@ -361,9 +404,8 @@ class FitModule(Module):
 
         self.eval()
         r = 0
-        if loader.sampler:
-            n = len(loader.sampler)
-        batch_size = loader.batch_size
+        n = len(loader.batch_sampler.sampler)
+        batch_size = loader.batch_sampler.batch_size
         pb = ProgressBar(len(loader), verbose=verbose)
         for b_i, b_data in enumerate(loader):
             # Predict on batch

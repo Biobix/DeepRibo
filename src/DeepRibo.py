@@ -5,12 +5,13 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
+from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler,\
+        BatchSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
 from functions import FitModule, defaultCollate, Logger, Adam, extendLib,\
-       str2bool
+       str2bool, BucketSampler
 
 
 class CustomLoader(Dataset):
@@ -80,34 +81,6 @@ class CustomLoader(Dataset):
 
     def __len__(self):
         return len(self.X_train.index)
-
-    def sortData(self):
-        sort_idx = np.argsort(abs(self.masked_list['start_site'] -
-                                  self.masked_list['stop_site']))
-        self.X_train = self.X_train.iloc[sort_idx, :]
-        self.y_train = self.y_train[sort_idx]
-        self.masked_list = self.masked_list.iloc[sort_idx, :]
-
-    def bucketshuffle(self, batch_size):
-        self.sortData()
-        # shuffle rows within regions
-        index = np.array(self.masked_list.index)
-        region_size = int(len(index)/batch_size//12)
-        inc_batch_reg = len(index) % region_size
-        index_list = np.array(index[inc_batch_reg:])
-        np.random.shuffle(np.reshape(index_list, (-1, region_size)).T)
-        shuffled_index = np.hstack((index_list, index[:inc_batch_reg]))
-
-        # shuffle batches within dataset
-        inc_batch = len(index) % batch_size
-        shuffled_index_list = shuffled_index[inc_batch:]
-        np.random.shuffle(np.reshape(shuffled_index_list, (-1, batch_size)))
-
-        # set dataset with new order
-        sort_idx = np.hstack((shuffled_index_list, shuffled_index[:inc_batch]))
-        self.X_train = self.X_train.loc[sort_idx, :]
-        self.y_train = self.y_train[sort_idx]
-        self.masked_list = self.masked_list.loc[sort_idx, :]
 
 
 class DualComplex(FitModule):
@@ -247,25 +220,23 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
 
     """
     data = CustomLoader(data_path, data, cutoff)
-    data.sortData()
     idx = np.arange(len(data.masked_list))
     dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
     labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
     if valid_size != 0:
         train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
                                                 stratify=labels)
-        valid_sampler = SubsetRandomSampler(valid_idx)
-        train_sampler = SequentialSampler(train_idx)
-        #train_sampler = SubsetRandomSampler(train_idx)
+        valid_sampler = BucketSampler(data.masked_list, valid_idx, 512)
+        valid_batch_loader = BatchSampler(valid_sampler, 512, False)
+        train_sampler = BucketSampler(data.masked_list, train_idx, batch_size)
+        train_batch_loader = BatchSampler(train_sampler, batch_size, False)
         valid_loader = DataLoader(data,
-                                  batch_size=batch_size,
-                                  sampler=valid_sampler,
+                                  batch_sampler=valid_batch_loader,
                                   num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
         train_loader = DataLoader(data,
-                                  batch_size=batch_size,
-                                  sampler=train_sampler,
+                                  batch_sampler=train_batch_loader,
                                   num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
@@ -309,8 +280,8 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
     """
     train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
                                               batch_size, num_workers, GPU, valid_size)
-    print("{} samples in train data".format(len(train_loader.sampler)))
-    print("{} samples in valid data".format(len(valid_loader.sampler)))
+    print("{} samples in train data".format(len(train_loader.batch_sampler.sampler)))
+    print("{} samples in valid data".format(len(valid_loader.batch_sampler.sampler)))
 
     if GPU:
         device = torch.device('cuda')
