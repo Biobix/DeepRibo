@@ -1,4 +1,7 @@
 import collections
+import re
+import datetime as dt
+import argparse
 from fitmodule.utils import ProgressBar
 import math
 import numpy as np
@@ -8,8 +11,10 @@ from torch.autograd import Variable
 from torch.optim import Optimizer
 from torch.nn import Module
 from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataloader import numpy_type_map
 from sklearn.metrics import average_precision_score, roc_auc_score
+from torch.utils.data.sampler import Sampler
 
 
 class Adam(Optimizer):
@@ -104,18 +109,59 @@ class Adam(Optimizer):
         return loss
 
 
-def auc_from_tensors(y_hat, y_true):
+class BucketSampler(Sampler):
+    """Samples elements in buckets, bucketShuffle needs to be called every epoch.
+
+    Arguments:
+        data_source (Dataset): dataset to sample from
+        index (list/numpy): array with index locations
+        batch_size (int): batch size
+    """
+
+    def __init__(self, data_source, index, batch_size):
+        starts = data_source.loc[index, 'start_site']
+        stops = data_source.loc[index, 'stop_site']
+        self.lens = abs(starts-stops)
+        self.batch_size = batch_size
+        self.sort_idx = np.argsort(self.lens)
+        self.bucketShuffle()
+
+    def __iter__(self):
+        return iter(self.idx_list)
+
+    def __len__(self):
+        return len(self.lens)
+
+    def bucketShuffle(self):
+        # shuffle rows within regions
+        region_size = int(len(self.lens)/self.batch_size//12)
+        inc_batch_reg = len(self.lens) % region_size
+        index_list = np.array(self.sort_idx[inc_batch_reg:])
+        np.random.shuffle(np.reshape(index_list, (-1, region_size)).T)
+        shuffled_index = np.hstack((index_list, self.sort_idx[:inc_batch_reg]))
+
+        # shuffle batches within dataset
+        inc_batch = len(self.lens) % self.batch_size
+        shuffled_index_list = shuffled_index[inc_batch:]
+        np.random.shuffle(np.reshape(shuffled_index_list,
+                                     (-1, self.batch_size)))
+
+        # set dataset with new order
+        self.idx_list = np.hstack((shuffled_index_list,
+                                   shuffled_index[:inc_batch]))
+
+
+def aucFromTensors(y_hat, y_true):
     y_true, y_hat = y_true.numpy(), y_hat.numpy()
     auc = roc_auc_score(y_true, y_hat[:, 1])
     return auc
 
 
-def default_collate(batch):
+def defaultCollate(batch):
     '''Puts each data field into a tensor with outer dimension batch size'
     code copied from
     https://pytorch.org/docs/master/_modules/torch/utils/data/dataloader.html#DataLoader
     and tweaked for personal use'''
-
 
     error_msg = 'batch must contain tensors, numbers, dicts or lists; found {}'
     _use_shared_memory = True
@@ -127,17 +173,14 @@ def default_collate(batch):
         pad = False
         out = None
 
-        if not np.all([batch[0].shape == tensor.shape for tensor in batch]):
+        # if not np.all([batch[0].shape == tensor.shape for tensor in batch]):
+        if batch[0].shape[0] != 4:
             pad = True
-            batch_lens = np.array([len(tensor) for tensor in batch])
-            max_len = np.max(batch_lens)
-            out_batch = torch.zeros(len(batch), int(max_len),
-                                    len(batch[0].shape))
+            batch_lens = np.sort([b.shape[0] for b in batch])[::-1].copy()
+            sort_order = np.argsort([b.shape[0] for b in batch])[::-1].copy()
+            batch = pad_sequence([batch[idx] for idx in sort_order])
 
-            for i, variable in enumerate(batch):
-                length = variable.size(0)
-                out_batch[i, :length, :] = variable
-            batch = out_batch
+            batch.unsqueeze_(2).contiguous()
 
         if _use_shared_memory:
             # If we're in a background process, concatenate directly into a
@@ -147,7 +190,8 @@ def default_collate(batch):
             out = batch[0].new(storage)
 
         if pad:
-            return torch.stack(batch, dim=0, out=out), torch.from_numpy(batch_lens)
+            # return torch.stack(batch, dim=0, out=out), torch.from_numpy(batch_lens)
+            return (batch, batch_lens, sort_order)
         else:
             return torch.stack(batch, dim=0, out=out)
     elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
@@ -169,13 +213,13 @@ def default_collate(batch):
     elif isinstance(batch[0], string_classes):
         return batch
     elif isinstance(batch[0], collections.Mapping):
-        return {key: default_collate([d[key] for d in batch]) for key in batch[0]}
+        return {key: defaultCollate([d[key] for d in batch]) for key in batch[0]}
     elif isinstance(batch[0], collections.Sequence):
         transposed = zip(*batch)
-        return [default_collate(samples) for samples in transposed]
+        return [defaultCollate(samples) for samples in transposed]
 
 
-def extend_lib(df, pred):
+def extendLib(df, pred):
     '''Function that uses the predictions to extend the data_list.csv object
     of a given dataset
 
@@ -223,9 +267,17 @@ def extend_lib(df, pred):
     return df
 
 
-class FitModule(Module):
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
-    def fit(self, train_loader, test_loader=None, valid_loaders=None,
+
+class FitModule(Module):
+    def fit(self, device, train_loader, test_loader=None, valid_loaders=None,
             valid_keys=None, scheduler=None, epochs=50, initial_epoch=0,
             seed=None, loss=None, optimizer=None, log=None, dest='default',
             verbose=1, GPU=False):
@@ -258,6 +310,7 @@ class FitModule(Module):
         Returns:
             Logger object with training metrics
         '''
+        ts = dt.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         if seed and seed >= 0:
             torch.manual_seed(seed)
         # Prepare test data
@@ -270,28 +323,23 @@ class FitModule(Module):
         # Compile optimizer
         opt = optimizer
         # Run training loop
-        self.train()
         for t in range(initial_epoch, epochs):
             if scheduler:
                 scheduler.step()
             print('Epoch {0} / {1}'.format(t+1, epochs))
             # Setup Logger
-            if verbose:
-                pb = ProgressBar(len(train_loader))
+            pb = ProgressBar(len(train_loader), verbose=verbose)
             epoch_loss = 0.0
             # Run batches
-            for batch_i, b_data in enumerate(train_loader):
+            self.train()
+            for b_i, b_data in enumerate(train_loader):
                 # Backprop
                 opt.zero_grad()
 
-                X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                         descending=True)
-                y_batch = Variable(b_data[2][sort_order].type(dtypeY))
-                X_batch_conv = Variable(b_data[0][sort_order]
-                                        .type(dtypeX).transpose_(0, 1))
-                X_batch_RNN = Variable(b_data[1][0][sort_order]
-                                       .type(dtypeX).transpose_(0, 1))
-                X_batch_RNN_len = list(b_data[1][1][sort_order])
+                sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
+                y_batch = b_data[2][sort_order].type(dtypeY).to(device)
+                X_batch_conv = b_data[0][sort_order].type(dtypeX).to(device)
+                X_batch_RNN = b_data[1][0].type(dtypeX).to(device)
                 X_batch_RNN = pack_padded_sequence(X_batch_RNN,
                                                    X_batch_RNN_len)
                 y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
@@ -300,35 +348,40 @@ class FitModule(Module):
                 batch_loss.backward()
                 opt.step()
                 # Update status
-                epoch_loss += batch_loss.data[0]
-                log.log_loss(batch_loss.data.cpu().numpy()[0])
+                epoch_loss += batch_loss.item()
+                log.log_loss(batch_loss.item())
 
-                if verbose:
-                    pb.bar(batch_i, log.output_metric())
+                pb.bar(b_i, log.output_metric())
+            # Reshuffle bucket sampler
+            train_loader.batch_sampler.sampler.bucketShuffle()
             # Run metrics
-            y_pred, y_true = self.predict(train_loader, log=log, GPU=GPU)
+            y_pred, y_true = self.predict(device, train_loader, log=log,
+                                          GPU=GPU, verbose=verbose)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
             if test_loader is not None:
-                y_pred, y_true = self.predict(test_loader, loss=loss,
-                                              key='test', log=log, GPU=GPU)
+                y_pred, y_true = self.predict(device, test_loader, loss=loss,
+                                              key='test', log=log, GPU=GPU,
+                                              verbose=verbose)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                 'test')
             if valid_loaders is not None:
                 for valid_loader, valid_key in zip(valid_loaders, valid_keys):
-                    y_pred, y_true = self.predict(valid_loader, loss=loss,
-                                                  key=valid_key, log=log,
-                                                  GPU=GPU)
+                    y_pred, y_true = self.predict(device, valid_loader,
+                                                  loss=loss, key=valid_key,
+                                                  log=log, GPU=GPU,
+                                                  verbose=verbose)
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                     valid_key)
-            if verbose:
-                pb.close()
-            torch.save(self, '{}_epoch_{}.pt'.format(dest, t))
-            with open('{}_{}.json'.format(dest, t), 'w') as fp:
+            pb.close()
+            torch.save(self.state_dict(), '{}_{}_epoch_{}.pt'.format(dest, ts,
+                                                                     t))
+            with open('{}_{}_{}.json'.format(dest, ts, t), 'w') as fp:
                 json.dump(log.metrics, fp)
             log.output_metrics()
         return log
 
-    def predict(self, loader, loss=None, key=None, log=None, GPU=False):
+    def predict(self, device, loader, loss=None, key=None, log=None, GPU=False,
+                verbose=False):
         '''Generates output predictions for the input samples.
         Computation is done in batches.
 
@@ -351,31 +404,23 @@ class FitModule(Module):
 
         self.eval()
         r = 0
-        if loader.sampler:
-            n = len(loader.sampler)
-        batch_size = loader.batch_size
-        for b_data in loader:
+        n = len(loader.batch_sampler.sampler)
+        batch_size = loader.batch_sampler.batch_size
+        pb = ProgressBar(len(loader), verbose=verbose)
+        for b_i, b_data in enumerate(loader):
             # Predict on batch
-            X_batch_RNN_len, sort_order = torch.sort(b_data[1][1],
-                                                     descending=True)
-            revert_mask = np.argsort(sort_order.numpy())
-            y_batch = Variable(b_data[2].type(dtypeY), volatile=True)
-            X_batch_conv = Variable(b_data[0][sort_order].type(dtypeX)
-                                    .transpose_(0, 1), volatile=True)
-            X_batch_RNN = Variable(b_data[1][0][sort_order].type(dtypeX)
-                                   .transpose_(0, 1), volatile=True)
-            X_batch_RNN_len = list(b_data[1][1][sort_order])
-            X_batch_RNN = pack_padded_sequence(X_batch_RNN,
-                                               X_batch_RNN_len)
-            y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
-            if GPU:
-                y_batch_pred = y_batch_pred[torch.cuda.LongTensor(revert_mask)]
-            else:
-                y_batch_pred = y_batch_pred[torch.LongTensor(revert_mask)]
+            with torch.no_grad():
+                sort_order, X_batch_RNN_len = b_data[1][2], b_data[1][1]
+                y_batch = b_data[2][sort_order].type(dtypeY).to(device)
+                X_batch_conv = b_data[0][sort_order].type(dtypeX).to(device)
+                X_batch_RNN = b_data[1][0].type(dtypeX).to(device)
+                X_batch_RNN = pack_padded_sequence(X_batch_RNN,
+                                                   X_batch_RNN_len)
+                y_batch_pred, hidden = self((X_batch_conv, X_batch_RNN))
 
             if key:
                 batch_loss = loss(y_batch_pred, y_batch)
-                log.log_loss(batch_loss.data.cpu().numpy()[0], key)
+                log.log_loss(batch_loss.item(), key)
             # Infer prediction shape
             y_batch_pred = y_batch_pred.data
             if r == 0:
@@ -385,11 +430,13 @@ class FitModule(Module):
             y_pred[r: min(n, r + batch_size)] = y_batch_pred
             y_true[r: min(n, r + batch_size)] = y_batch.data
             r += batch_size
+            pb.bar(b_i, log.output_metric())
+
         return y_pred, y_true
 
 
 class Logger(object):
-    def __init__(self, metrics, test=True, valid_keys=None):
+    def __init__(self, args, metrics, test=True, valid_keys=None):
         '''Object which stores and calculates metrics produced by a neural
         network during training
 
@@ -422,9 +469,10 @@ class Logger(object):
             self.log_p_r = True
             for key in self.metrics:
                 self.metrics[key].update({'p-r': []})
-
-        for key in self.metrics:
+        self.keys = list(self.metrics.keys())
+        for key in self.keys:
             self.metrics[key].update({'loss': [0]})
+        self.metrics['args'] = args
 
     def log_loss(self, loss, key='train'):
         '''Logs loss metric
@@ -470,7 +518,7 @@ class Logger(object):
         '''Prints last recorded values of all metrics
         '''
         print('')
-        for key in sorted(self.metrics):
+        for key in sorted(self.keys):
             print('{}:'.format(key), end='')
             for k, v in self.metrics[key].items():
                 print('\t{}: {:5.3f}'.format(k, v[-1]), end='')

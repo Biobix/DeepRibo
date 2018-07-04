@@ -22,23 +22,29 @@ def get_loader(X, y=None, batch_size=1, shuffle=False):
 class ProgressBar(object):
     """Cheers @ajratner"""
 
-    def __init__(self, n, length=40):
+    def __init__(self, n, length=40, verbose=True):
         # Protect against division by zero
         self.n = max(1, n)
         self.nf = float(n)
         self.length = length
+        self.verbose = verbose
         # Precalculate the i values that should trigger a write operation
-        self.ticks = set([round(i/100.0 * n) for i in range(101)])
-        self.ticks.add(n-1)
+        self.ticks = [round(i/100.0 * n) for i in range(101)]
+        self.ticks.append(n-1)
         self.bar(0)
 
     def bar(self, i, message=""):
         """Assumes i ranges through [0, n-1]"""
         if i in self.ticks:
-            b = int(np.ceil(((i+1) / self.nf) * self.length))
-            sys.stdout.write("\r[{0}{1}] {2}%\t{3}".format(
-                "="*b, " "*(self.length-b), int(100*((i+1) / self.nf)), message
-            ))
+            if self.verbose:
+                b = int(np.ceil(((i+1) / self.nf) * self.length))
+                sys.stdout.write("\r[{0}{1}] {2}%\t{3}".format(
+                    "="*b, " "*(self.length-b), int(100*((i+1) / self.nf)),
+                    message))
+            else:
+                sys.stdout.write("=")
+                if i == self.ticks[-1]:
+                    sys.stdout.write("\n")
             sys.stdout.flush()
 
     def close(self, message=""):

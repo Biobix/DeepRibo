@@ -1,15 +1,17 @@
-import math
 import sys
 import argparse
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
+from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler,\
+        BatchSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
-from functions import FitModule, default_collate, Logger, Adam, extend_lib
+from functions import FitModule, defaultCollate, Logger, Adam, extendLib,\
+       str2bool, BucketSampler
 
 
 class CustomLoader(Dataset):
@@ -28,7 +30,6 @@ class CustomLoader(Dataset):
         """
         self.data_path = data_path
         data_list = ["{}/{}/data_list.csv".format(data_path, d) for d in data]
-        print(data_list)
         # load all data in dataframe
         tmp_df = pd.concat([pd.read_csv(dl) for dl in data_list])
         self.list = tmp_df
@@ -66,19 +67,15 @@ class CustomLoader(Dataset):
 
         # create a dataframe containing the locations of the input 
         # data for each sample
-        X_train = tmp_df.loc[:, 'filename':'filename_counts'][self.mask]
-        self.X_train = X_train.reset_index(drop=True)
-        self.y_train = tmp_df['label'][self.mask].values
+        self.X_train = self.masked_list.loc[:, 'filename':'filename_counts']
+        self.y_train = self.masked_list['label'].values
 
     def __getitem__(self, index):
         # load and transform DNA sequence data
         path = '{}/{}'.format(self.data_path, self.X_train.iloc[index, 0])
-        img = torch.from_numpy(np.load(path)).contiguous()
-        img = img.view(1, img.shape[0],
-                       img.shape[1]).transpose(0, 2)
-        # load and transform RIBO-seq sequence data
+        img = torch.from_numpy(torch.load(path))
         path = "{}/{}".format(self.data_path, self.X_train.iloc[index, 1])
-        counts = torch.from_numpy(np.load(path))
+        counts = torch.from_numpy(torch.load(path))
         label = self.y_train[index]
         return img, counts, label
 
@@ -87,7 +84,7 @@ class CustomLoader(Dataset):
 
 
 class DualComplex(FitModule):
-    def __init__(self, hidden_size, layers, bidirect=False):
+    def __init__(self, motif_count, hidden_size, layers, bidirect, nodes):
         """The DeepRibo model architecture
 
         Arguments:
@@ -97,17 +94,23 @@ class DualComplex(FitModule):
         """
         super(DualComplex, self).__init__()
         self.gru = nn.GRU(1, hidden_size=hidden_size,
-                          num_layers=layers, bidirectional=bidirect)
+                          num_layers=layers, dropout=0.3, bidirectional=bidirect)
         self.layers = layers
         self.hidden_size = hidden_size
-        self.input_len = 30
+        self.motif_count = motif_count
+        self.in_len = 30
         self.bi = 2**bidirect
+        self.nodes_0 = self.hidden_size*layers*self.bi + (self.in_len-11)*self.motif_count
+        nodes.append(2)
+        nodes.insert(0, self.nodes_0)
         self.conv_ch_1 = nn.Conv2d(4, 4, (1, 1))
-        self.conv1 = nn.Conv2d(4, 32, (12, 1))
-        self.fc1 = nn.Linear(self.hidden_size*layers*self.bi +
-                             math.ceil((((self.input_len-11)))*32), 1024)
-        self.fc2 = nn.Linear(1024, 512)
-        self.fc3 = nn.Linear(512, 2)
+        self.conv1 = nn.Conv2d(4, self.motif_count, (12, 1))
+        fc = []
+        for i in range(len(nodes)-2):
+            fc.append(nn.Linear(nodes[i], nodes[i+1]))
+            fc.append(nn.ReLU())
+        fc.append(nn.Linear(nodes[-2], nodes[-1]))
+        self.fc = nn.Sequential(*fc)
 
     def forward(self, x, hidden=None):
         # the input x is a tuple containing the DNA sequence data ([0])
@@ -115,24 +118,90 @@ class DualComplex(FitModule):
         y = x[1]
         y, hidden = self.gru(y)
         hidden = hidden.transpose(0, 1).contiguous()
-        hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi)
-        x = x[0].transpose(0, 1)
+        hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi).contiguous()
+        x = x[0]
 
         x = F.relu(self.conv_ch_1(x))
         x = F.relu(self.conv1(x))
-        x = x.view(-1, math.ceil((((self.input_len-11)))*32))
-
-        x = torch.cat([x, hidden], dim=1)
-
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = x.view(-1, (self.in_len-11)*self.motif_count)
+        x = torch.cat([x, hidden], dim=1).contiguous()
+        x = self.fc(x)
 
         return x, hidden
 
 
-def load_database(data_path, data, cutoff, batch_size, pin_memory=False,
-                  test=False):
+class CNNComplex(FitModule):
+    def __init__(self, motif_count, nodes):
+        """The DeepRibo model architecture
+
+        Arguments:
+            hidden_size (int): weights allocated to the GRU
+            layers (int): amount of GRU layers
+            bidirect (bool): model uses a bidirectional GRU
+        """
+        super(CNNComplex, self).__init__()
+        self.motif_count = motif_count
+        self.in_len = 30
+        self.nodes_0 = (self.in_len-11)*self.motif_count
+        nodes.append(2)
+        nodes.insert(0, self.nodes_0)
+        self.conv_ch_1 = nn.Conv2d(4, 4, (1, 1))
+        self.conv1 = nn.Conv2d(4, self.motif_count, (12, 1))
+        fc = []
+        for i in range(len(nodes)-2):
+            fc.append(nn.Linear(nodes[i], nodes[i+1]))
+            fc.append(nn.ReLU())
+        fc.append(nn.Linear(nodes[-2], nodes[-1]))
+        self.fc = nn.Sequential(*fc)
+
+    def forward(self, x, hidden=None):
+        x = F.relu(self.conv_ch_1(x[0]))
+        x = F.relu(self.conv1(x))
+        x = x.view(-1, (self.in_len-11)*self.motif_count)
+        x = self.fc(x)
+
+        return x, hidden
+
+
+class RNNComplex(FitModule):
+    def __init__(self, hidden_size, layers, bidirect, nodes):
+        """The DeepRibo model architecture
+
+        Arguments:
+            hidden_size (int): weights allocated to the GRU
+            layers (int): amount of GRU layers
+            bidirect (bool): model uses a bidirectional GRU
+        """
+        super(RNNComplex, self).__init__()
+        self.gru = nn.GRU(1, hidden_size=hidden_size,
+                          num_layers=layers, dropout=0.3, bidirectional=bidirect)
+        self.layers = layers
+        self.hidden_size = hidden_size
+        self.in_len = 30
+        self.bi = 2**bidirect
+        self.nodes_0 = self.hidden_size*layers*self.bi
+        nodes.append(2)
+        nodes.insert(0, self.nodes_0)
+        fc = []
+        for i in range(len(nodes)-2):
+            fc.append(nn.Linear(nodes[i], nodes[i+1]))
+            fc.append(nn.ReLU())
+        fc.append(nn.Linear(nodes[-2], nodes[-1]))
+        self.fc = nn.Sequential(*fc)
+
+    def forward(self, x, hidden=None):
+        y = x[1]
+        y, hidden = self.gru(y)
+        hidden = hidden.transpose(0, 1).contiguous()
+        hidden = hidden.view(-1, self.hidden_size*self.layers*self.bi).contiguous()
+
+        x = self.fc(hidden)
+
+        return x, hidden
+
+
+def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
+                 valid_size=0):
     """Loads data using a custom loader
 
     Arguments:
@@ -151,22 +220,44 @@ def load_database(data_path, data, cutoff, batch_size, pin_memory=False,
 
     """
     data = CustomLoader(data_path, data, cutoff)
-    if test:
-        sampler = SequentialSampler(range(len(data)))
+    idx = np.arange(len(data.masked_list))
+    dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
+    labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
+    if valid_size != 0:
+        train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
+                                                stratify=labels)
+        valid_sampler = BucketSampler(data.masked_list, valid_idx, 512)
+        valid_batch_loader = BatchSampler(valid_sampler, 512, False)
+        train_sampler = BucketSampler(data.masked_list, train_idx, batch_size)
+        train_batch_loader = BatchSampler(train_sampler, batch_size, False)
+        valid_loader = DataLoader(data,
+                                  batch_sampler=valid_batch_loader,
+                                  num_workers=num_workers,
+                                  collate_fn=defaultCollate,
+                                  pin_memory=pin_memory)
+        train_loader = DataLoader(data,
+                                  batch_sampler=train_batch_loader,
+                                  num_workers=num_workers,
+                                  collate_fn=defaultCollate,
+                                  pin_memory=pin_memory)
+
+        return train_loader, valid_loader
+
     else:
-        sampler = SubsetRandomSampler(range(len(data)))
-    loader = DataLoader(data,
-                        batch_size=batch_size,
-                        sampler=sampler,
-                        num_workers=8,
-                        collate_fn=default_collate,
-                        pin_memory=pin_memory)
+        train_sampler = SubsetRandomSampler(idx)
+        train_loader = DataLoader(data,
+                                  batch_size=batch_size,
+                                  sampler=train_sampler,
+                                  num_workers=num_workers,
+                                  collate_fn=defaultCollate,
+                                  pin_memory=pin_memory)
 
-    return loader
+        return train_loader
 
 
-def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
-                dest, batch_size, epochs, GPU):
+def trainModel(args, data_path, train_data, valid_size, train_cutoff,
+               dest, batch_size, epochs, hidden_size, layers, bidirect, motif_count, nodes,
+               model_type, num_workers, GPU, verbose):
     """Trains the model using DeepRibo methodology
 
     Arguments:
@@ -187,40 +278,43 @@ def train_model(data_path, train_data, test_data, train_cutoff, test_cutoff,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
-    train_loader = load_database(data_path, train_data, train_cutoff,
-                                 batch_size, GPU)
-    print("{} samples in train data".format(len(train_loader.dataset.X_train)))
-    test_loader = load_database(data_path, test_data, test_cutoff, batch_size,
-                                GPU, True)
-    print("{} samples in test data".format(len(test_loader.dataset.X_train)))
-
-    hidden_size = 128
+    train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
+                                              batch_size, num_workers, GPU, valid_size)
+    print("{} samples in train data".format(len(train_loader.batch_sampler.sampler)))
+    print("{} samples in valid data".format(len(valid_loader.batch_sampler.sampler)))
 
     if GPU:
-        dtype = torch.cuda.FloatTensor
+        device = torch.device('cuda')
     else:
-        dtype = torch.FloatTensor
+        device = torch.device('cpu')
     # create weighted loss (heavily imbalanced data)
     ratio = sum(train_loader.dataset.y_train)/len(train_loader.dataset.y_train)
-    weights = torch.FloatTensor([ratio, 1-ratio]).type(dtype)
+    weights = torch.FloatTensor([ratio, 1-ratio]).to(device)
     # initialize model
-    model = DualComplex(hidden_size, 2, True)
-    model.type(dtype)
+    if model_type == 'CNNRNN':
+        model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
+    if model_type == 'CNN':
+        model = CNNComplex(motif_count, nodes)
+    else:
+        model = RNNComplex(hidden_size, layers, bidirect, nodes)
+    model.to(device)
+    # nn.DataParallel(model, device_ids=[2, 0])
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
     scheduler = StepLR(optimizer, 10, gamma=0.1)
     # key under which performance measures are saved
-    test_keys = ["test_data"]
+    valid_keys = ["valid_data"]
     # record loss, accuracy, AUC, PR-AUC on test set
-    log = Logger(["loss", "AUC", "P-R", "acc"], False, test_keys)
+    log = Logger(vars(args), ["loss", "AUC", "P-R", "acc"], False, valid_keys)
     # train the model
-    model.fit(train_loader, valid_loaders=[test_loader], valid_keys=test_keys,
+    model.fit(device, train_loader, valid_loaders=[valid_loader], valid_keys=valid_keys,
               scheduler=scheduler, epochs=epochs, loss=loss,
-              optimizer=optimizer, log=log, dest=dest, GPU=GPU)
+              optimizer=optimizer, log=log, dest=dest, GPU=GPU, verbose=verbose)
 
 
 def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
-            GPU):
+            hidden_size, layers, bidirect, motif_count, nodes, model_type,
+            num_workers, GPU, verbose):
     """Uses the model for predictions
 
     Arguments:
@@ -241,15 +335,18 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
-    hidden_size = 128
-
-    pred_loader = load_database(data_path, pred_data, pred_cutoff, batch_size,
-                                True)
-    model = DualComplex(hidden_size, 2, True)
+    pred_loader = loadDatabase(data_path, pred_data, pred_cutoff, batch_size,
+                               num_workers, GPU, verbose)
+    if model_type == 'CNNRNN':
+        model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
+    if model_type == 'CNN':
+        model = CNNComplex(motif_count, nodes)
+    else:
+        model = RNNComplex(hidden_size, layers, bidirect, nodes)
 
     model.load_state_dict(torch.load(model_name))
-    pred, true = model.predict(pred_loader, GPU=GPU)
-    df_pred = extend_lib(pred_loader.dataset.masked_list, pred)
+    pred, true = model.predict(pred_loader, GPU=GPU, verbose=verbose)
+    df_pred = extendLib(pred_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 
 
@@ -275,7 +372,8 @@ class ParseArgs(object):
 
         def train(self):
             parser = argparse.ArgumentParser(
-                            description='Train a model')
+                       description='Train a model',
+                       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             # TWO argvs, ie the command (git) and the subcommand (commit)
             parser.add_argument('data_path', type=str,
                                 help="path containing the data folders for "
@@ -283,71 +381,116 @@ class ParseArgs(object):
             parser.add_argument('--train_data', default='[]', nargs='+',
                                 type=str, required=True, help="train data "
                                 "folder names present in the data path")
-            parser.add_argument('--test_data', nargs='*', type=str,
-                                help="test data folder names present in the "
-                                "data path")
-            parser.add_argument('-r', '--tr_rpkm', nargs='+', type=float,
+            parser.add_argument('--valid_size', type=float,
+                                default=0.05,
+                                help="percentage of train used as valid"
+                                "data")
+            parser.add_argument('-r', '--rpkm', nargs='+', type=float,
                                 required=True,
                                 help="minimum cutoff of RPKM values to filter "
                                 "the training data")
-            parser.add_argument('-c', '--tr_cov', nargs='+', type=float,
+            parser.add_argument('-c', '--coverage', nargs='+', type=float,
                                 required=True, help="minimum cutoff of"
                                 "coverage values to filter the training data"
                                 ", these are given in the same order.")
-            parser.add_argument('-tr', '--te_rpkm', nargs='*', type=float,
-                                help="minimum cutoff of RPKM values to filter "
-                                "the testing data"
-                                ", these are given in the same order.")
-            parser.add_argument('-tc', '--te_cov', nargs='*', type=float,
-                                help="minimum cutoff of coverage values to "
-                                "filter the testing data"
-                                ", these are given in the same order.")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 help="path to which the model is saved")
-            parser.add_argument('-b', '--batch_size', type=int, default=32,
+            parser.add_argument('-b', '--batch_size', type=int, default=256,
                                 help="training batch size")
-            parser.add_argument('-e', '--epochs', default=25, type=int,
+            parser.add_argument('-e', '--epochs', default=20, type=int,
                                 help="training epochs")
-            parser.add_argument('--GPU', action="store_true", help="training "
-                                "using GPU (RECOMMENDED)")
+            parser.add_argument('-g', '--GRU_nodes', default=128, type=int,
+                                help="size of the hidden state of the GRU "
+                                "unit")
+            parser.add_argument('-l', '--GRU_layers', default=2,
+                                choices=[1, 2], type=int, help="amount of "
+                                "sequential GRU layers")
+            parser.add_argument('-B', '--GRU_bidirect', type=str2bool, nargs='?',
+                                const=True, default=True, help="use of "
+                                "bidirectional GRU units")
+            parser.add_argument('-m', '--COV_motifs', default=32, type=int,
+                                help="amount of motifs (conv kernels) used "
+                                "by the convolutional layer")
+            parser.add_argument('-n', '--FC_nodes', default=[1024, 512],
+                                type=int, nargs='+', help="nodes per layer "
+                                "present in the fully connected layers of "
+                                "DeepRibo")
+            parser.add_argument('--model_type', default='CNNRNN', type=str,
+                                choices=['CNNRNN', 'CNN', 'RNN'], help=""
+                                "Use CNNRNN, CNN or RNN architecture")
+            parser.add_argument('--num_workers', default=0, type=int,
+                                help="numbers of CPU units used for data"
+                                "loading")
+            parser.add_argument('--GPU', action='store_true', help=""
+                                "use of GPU (RECOMMENDED)")
+            parser.add_argument('-v', '--verbose', action='store_true', help=""
+                                "more detailed progress bar")
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
-            train_model(args.data_path, args.train_data, args.test_data,
-                        (args.tr_rpkm, args.tr_cov),
-                        (args.te_rpkm, args.te_cov), args.dest,
-                        args.batch_size, args.epochs, args.GPU)
+            trainModel(args, args.data_path, args.train_data, args.valid_size,
+                       (args.rpkm, args.coverage), args.dest,
+                       args.batch_size, args.epochs, args.GRU_nodes,
+                       args.GRU_layers, args.GRU_bidirect, args.COV_motifs,
+                       args.FC_nodes, args.model_type, args.num_workers,
+                       args.GPU, args.verbose)
 
         def predict(self):
             parser = argparse.ArgumentParser(
-                        description='Create predictions using a trained model')
+                        description='Create predictions using a trained model',
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             parser.add_argument('data_path', type=str,
                                 help="path containing the data folders for"
                                 " predictions")
             parser.add_argument('--pred_data', type=str, required=True,
                                 help="data folder name present in the data "
                                 "path used to make predictions on")
-            parser.add_argument('-pr', '--pr_rpkm',  type=float,
+            parser.add_argument('-r', '--rpkm',  type=float,
                                 required=True, help="minimum cutoff of RPKM "
                                 "value to filter the data used for "
                                 "predictions.")
-            parser.add_argument('-pc', '--pr_cov', nargs='+', type=float,
+            parser.add_argument('-c', '--coverage', nargs='+', type=float,
                                 required=True, help="minimum cutoff of "
                                 "coverage value to filter the data used for "
                                 "predictions order")
-            parser.add_argument('-m', '--model', type=str, required=True,
-                                help="path to the model used for predictions")
+            parser.add_argument('-M', '--model', type=str, required=True,
+                                help="path to the trained model")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 required=True, help="path to file in which "
                                 "predictions are saved")
-            parser.add_argument('-b', '--batch_size', type=int, default=32,
-                                help="training batch size")
-            parser.add_argument('--GPU', action="store_true",
-                                help="training using GPU (RECOMMENDED)")
+            parser.add_argument('-g', '--GRU_nodes', default=128, type=int,
+                                help="size of the hidden state of the GRU "
+                                "unit")
+            parser.add_argument('-l', '--GRU_layers', default=2, choices=[1, 2],
+                                type=str, help="amount of sequential GRU "
+                                "layers")
+            parser.add_argument('-B', '--GRU_bidirect', default=True,
+                                type=bool, help="use of bidirectional GRU "
+                                "units")
+            parser.add_argument('-m', '--COV_motifs', default=32, type=int,
+                                help="amount of motifs (conv kernels) used "
+                                "by the convolutional layer")
+            parser.add_argument('-n', '--FC_nodes', default=[1024, 512],
+                                type=int, nargs='+', help="nodes per layer "
+                                "present in the fully connected layers of "
+                                "DeepRibo")
+            parser.add_argument('--model_type', default='CNNRNN', type=str,
+                                choices=['CNNRNN', 'CNN', 'RNN'], help=""
+                                "Use CNNRNN, CNN or RNN architecture")
+            parser.add_argument('--num_workers', default=0, type=int,
+                                help="numbers of CPU units used for data"
+                                "loading")
+            parser.add_argument('--GPU', action='store_true', help=""
+                                "use of GPU")
+            parser.add_argument('-v', '--verbose', action='store_true', help=""
+                                "more detailed progress bar")
             args = parser.parse_args(sys.argv[2:])
             print('Creating predictions using model {}'.format(args.model))
             predict(args.data_path, [args.pred_data],
-                    ([args.pr_rpkm], [args.pr_cov]), args.model,
-                    args.dest, args.batch_size, args.GPU)
+                    ([args.rpkm], [args.coverage]), args.model,
+                    args.dest, 1024, args.GRU_nodes, args.GRU_layers,
+                    args.GRU_bidirect, args.COV_motifs, args.FC_nodes,
+                    args.model_type, args.num_workers, args.GPU,
+                    args.verbose)
 
 
 if __name__ == "__main__":
