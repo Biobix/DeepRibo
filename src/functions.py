@@ -130,19 +130,13 @@ def defaultCollate(batch):
         pad = False
         out = None
 
-        if not np.all([batch[0].shape == tensor.shape for tensor in batch]):
+        # if not np.all([batch[0].shape == tensor.shape for tensor in batch]):
+        if batch[0].shape[0] != 4:
             pad = True
-            #batch_lens = np.array([len(tensor) for tensor in batch])
-            #max_len = np.max(batch_lens)
-            #out_batch = torch.zeros(len(batch), int(max_len),
-            #                        len(batch[0].shape))
-
-            #for i, variable in enumerate(batch):
-            #    length = variable.size(0)
-            #    out_batch[i, :length, :] = variable
             batch_lens = np.sort([b.shape[0] for b in batch])[::-1].copy()
             sort_order = np.argsort([b.shape[0] for b in batch])[::-1].copy()
             batch = pad_sequence([batch[idx] for idx in sort_order])
+
             batch.unsqueeze_(2).contiguous()
 
         if _use_shared_memory:
@@ -293,6 +287,8 @@ class FitModule(Module):
             # Setup Logger
             pb = ProgressBar(len(train_loader), verbose=verbose)
             epoch_loss = 0.0
+            # Reorder input data
+            train_loader.dataset.bucketshuffle(train_loader.batch_size)
             # Run batches
             self.train()
             for b_i, b_data in enumerate(train_loader):

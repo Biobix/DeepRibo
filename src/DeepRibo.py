@@ -66,9 +66,8 @@ class CustomLoader(Dataset):
 
         # create a dataframe containing the locations of the input 
         # data for each sample
-        X_train = tmp_df.loc[:, 'filename':'filename_counts'][self.mask]
-        self.X_train = X_train.reset_index(drop=True)
-        self.y_train = tmp_df['label'][self.mask].values
+        self.X_train = self.masked_list.loc[:, 'filename':'filename_counts']
+        self.y_train = self.masked_list['label'].values
 
     def __getitem__(self, index):
         # load and transform DNA sequence data
@@ -81,6 +80,34 @@ class CustomLoader(Dataset):
 
     def __len__(self):
         return len(self.X_train.index)
+
+    def sortData(self):
+        sort_idx = np.argsort(abs(self.masked_list['start_site'] -
+                                  self.masked_list['stop_site']))
+        self.X_train = self.X_train.iloc[sort_idx, :]
+        self.y_train = self.y_train[sort_idx]
+        self.masked_list = self.masked_list.iloc[sort_idx, :]
+
+    def bucketshuffle(self, batch_size):
+        self.sortData()
+        # shuffle rows within regions
+        index = np.array(self.masked_list.index)
+        region_size = int(len(index)/batch_size//12)
+        inc_batch_reg = len(index) % region_size
+        index_list = np.array(index[inc_batch_reg:])
+        np.random.shuffle(np.reshape(index_list, (-1, region_size)).T)
+        shuffled_index = np.hstack((index_list, index[:inc_batch_reg]))
+
+        # shuffle batches within dataset
+        inc_batch = len(index) % batch_size
+        shuffled_index_list = shuffled_index[inc_batch:]
+        np.random.shuffle(np.reshape(shuffled_index_list, (-1, batch_size)))
+
+        # set dataset with new order
+        sort_idx = np.hstack((shuffled_index_list, shuffled_index[:inc_batch]))
+        self.X_train = self.X_train.loc[sort_idx, :]
+        self.y_train = self.y_train[sort_idx]
+        self.masked_list = self.masked_list.loc[sort_idx, :]
 
 
 class DualComplex(FitModule):
@@ -220,6 +247,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
 
     """
     data = CustomLoader(data_path, data, cutoff)
+    data.sortData()
     idx = np.arange(len(data.masked_list))
     dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
     labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
@@ -227,7 +255,8 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
         train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
                                                 stratify=labels)
         valid_sampler = SubsetRandomSampler(valid_idx)
-        train_sampler = SubsetRandomSampler(train_idx)
+        train_sampler = SequentialSampler(train_idx)
+        #train_sampler = SubsetRandomSampler(train_idx)
         valid_loader = DataLoader(data,
                                   batch_size=batch_size,
                                   sampler=valid_sampler,
