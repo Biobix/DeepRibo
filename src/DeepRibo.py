@@ -226,8 +226,8 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
     if valid_size != 0:
         train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
                                                 stratify=labels)
-        valid_sampler = BucketSampler(data.masked_list, valid_idx, 512)
-        valid_batch_loader = BatchSampler(valid_sampler, 512, False)
+        valid_sampler = BucketSampler(data.masked_list, valid_idx, 128)
+        valid_batch_loader = BatchSampler(valid_sampler, 128, False)
         train_sampler = BucketSampler(data.masked_list, train_idx, batch_size)
         train_batch_loader = BatchSampler(train_sampler, batch_size, False)
         valid_loader = DataLoader(data,
