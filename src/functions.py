@@ -321,7 +321,7 @@ class FitModule(Module):
                                     valid_key)
             if verbose:
                 pb.close()
-            torch.save(self, '{}_epoch_{}.pt'.format(dest, t))
+            torch.save(self.state_dict(), '{}_epoch_{}.pt'.format(dest, t))
             with open('{}_{}.json'.format(dest, t), 'w') as fp:
                 json.dump(log.metrics, fp)
             log.output_metrics()
