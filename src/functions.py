@@ -134,7 +134,7 @@ class BucketSampler(Sampler):
 
     def bucketShuffle(self):
         # shuffle rows within regions
-        region_size = int(len(self.lens)/self.batch_size//12)
+        region_size = np.maximum(int(len(self.lens)/self.batch_size//12), 100)
         inc_batch_reg = len(self.lens) % region_size
         index_list = np.array(self.sort_idx[inc_batch_reg:])
         np.random.shuffle(np.reshape(index_list, (-1, region_size)).T)
