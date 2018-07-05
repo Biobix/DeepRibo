@@ -5,13 +5,12 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler,\
-        BatchSampler
+from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
 from functions import FitModule, defaultCollate, Logger, Adam, extendLib,\
-       str2bool, BucketSampler
+       str2bool, BucketSampler, BatchSampler
 
 
 class CustomLoader(Dataset):
@@ -48,14 +47,14 @@ class CustomLoader(Dataset):
         self.cond_1 = mask
         self.anti_cond_1 = amask
 
-        # 2. mask data in collected data which is smaller than 30 
+        # 2. mask data in collected data which is smaller than 30
         # nucleotides
         self.cond_2 = abs(tmp_df["start_site"]-tmp_df["stop_site"]) > 30
         self.mask = np.logical_and(self.cond_1, self.cond_2)
         self.anti_mask = np.logical_and(self.anti_cond_1, self.cond_2)
 
         # 3. filter out ORFs sharing a stop codon with an annotated
-        # ORF which has been filtered out by previous constraints  
+        # ORF which has been filtered out by previous constraints
         self.masked_list = tmp_df[self.mask].reset_index(drop=True)
         list_neg = tmp_df[self.anti_mask][tmp_df[self.anti_mask]["label"] == 1]
 
@@ -65,18 +64,18 @@ class CustomLoader(Dataset):
         self.mask = np.logical_and(self.mask, temp_mask)
         self.masked_list = tmp_df[self.mask].reset_index(drop=True)
 
-        # create a dataframe containing the locations of the input 
+        # create a dataframe containing the locations of the input
         # data for each sample
         self.X_train = self.masked_list.loc[:, 'filename':'filename_counts']
-        self.y_train = self.masked_list['label'].values
+        self.y_train = self.masked_list['label']
 
     def __getitem__(self, index):
         # load and transform DNA sequence data
-        path = '{}/{}'.format(self.data_path, self.X_train.iloc[index, 0])
+        path = '{}/{}'.format(self.data_path, self.X_train.loc[index, 'filename'])
         img = torch.from_numpy(torch.load(path))
-        path = "{}/{}".format(self.data_path, self.X_train.iloc[index, 1])
+        path = "{}/{}".format(self.data_path, self.X_train.loc[index, 'filename_counts'])
         counts = torch.from_numpy(torch.load(path))
-        label = self.y_train[index]
+        label = self.y_train.loc[index]
         return img, counts, label
 
     def __len__(self):
@@ -94,7 +93,7 @@ class DualComplex(FitModule):
         """
         super(DualComplex, self).__init__()
         self.gru = nn.GRU(1, hidden_size=hidden_size,
-                          num_layers=layers, dropout=0.3, bidirectional=bidirect)
+                          num_layers=layers, bidirectional=bidirect)
         self.layers = layers
         self.hidden_size = hidden_size
         self.motif_count = motif_count
@@ -223,11 +222,13 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
     idx = np.arange(len(data.masked_list))
     dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
     labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
+    plus = len(dfs)
+    labels[data.masked_list['label'] == 1] += plus
     if valid_size != 0:
         train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
                                                 stratify=labels)
-        valid_sampler = BucketSampler(data.masked_list, valid_idx, 128)
-        valid_batch_loader = BatchSampler(valid_sampler, 128, False)
+        valid_sampler = BucketSampler(data.masked_list, valid_idx, 256)
+        valid_batch_loader = BatchSampler(valid_sampler, 256, False)
         train_sampler = BucketSampler(data.masked_list, train_idx, batch_size)
         train_batch_loader = BatchSampler(train_sampler, batch_size, False)
         valid_loader = DataLoader(data,
@@ -244,10 +245,12 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
         return train_loader, valid_loader
 
     else:
-        train_sampler = SubsetRandomSampler(idx)
+        train_sampler = BucketSampler(data.masked_list,
+                                      np.arange(len(data.masked_list)),
+                                      batch_size)
+        train_batch_loader = BatchSampler(train_sampler, batch_size, False)
         train_loader = DataLoader(data,
-                                  batch_size=batch_size,
-                                  sampler=train_sampler,
+                                  batch_sampler=train_batch_loader,
                                   num_workers=num_workers,
                                   collate_fn=defaultCollate,
                                   pin_memory=pin_memory)
@@ -293,7 +296,7 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
     # initialize model
     if model_type == 'CNNRNN':
         model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
-    if model_type == 'CNN':
+    elif model_type == 'CNN':
         model = CNNComplex(motif_count, nodes)
     else:
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
