@@ -1,6 +1,9 @@
 # DeepRibo
 
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data. The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. This package allows for the user to train their own models using custom data and custom architectures. It is strongly recommended to use GPU infrastructure for training new models using DeepRibo. 
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data and short DNA sequences (Shine-Dalgarno region). The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. This package allows for the user to train their own models using custom data and custom architectures. It is strongly recommended to use GPU infrastructure for training new models using DeepRibo. 
+
+
+![Default DeepRibo architecture](http://www.kermit.ugent.be/files/gwips_hub/DeepRibo_model.png)
 
 # Installation
 
@@ -8,7 +11,19 @@ To use DeepRibo, simply clone the repository in your working directory and insta
 
 	git clone https://github.com/Biobix/DeepRibo.git
 	conda env create -f environment.yml
- 
+
+# Changelog
+
+Recent Major features implemented include:
+
+- PyTorch libraries updated from v0.3 to v0.4
+- Implementation of custom neural network architectures
+- A custom BucketSampler class, improving training times for large dataset up to 10 times
+- Selection of start and stop triplets
+
+
+Given a typical distribution of ORFs lengths within a ribosome profiling experiment. Through bucketing, batches are created out of samples which share a similar length. When using random sampling, at least one long ORF is typically present within a batch, slowing the processing speed down significantly.
+![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/distr_lens.png)
 
 # User Guide
 
@@ -16,8 +31,8 @@ To use DeepRibo, simply clone the repository in your working directory and insta
 
 ## Parsing Data
 
+`python DataParser.py -h`
 ----
-python DataParser.py -h
 
 	positional arguments:
 	  sense_cov             Path to bedgraph containing sense riboseq data
@@ -67,10 +82,10 @@ When running `Dataparser.py`, two filetypes for each ORF present in te genome ar
 
 # Training a model
 
-after all data has been processed, a model can be trained. Any combination of datasets present in the **DATA** folder can be used for training/testing. 
+After all data has been processed, a model can be trained. Any combination of datasets present in the **DATA** folder can be used for training/testing. 
 
+`python DeepRibo.py train -h`
 ----
-python DeepRibo.py train -h
 
 	Train a model
 
@@ -138,8 +153,10 @@ Custom architectures of DeepRibo can be trained using a variety of parameters av
 # Making predictions 
 
 Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
+
+`python DeepRibo.py predict -h`
+
 ---
-python DeepRibo.py predict -h
 
 	Create predictions using a trained model
 
@@ -195,18 +212,29 @@ These code examples will work with the data present if executed sequentially. Th
 ### parsing the data
 Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
-`python DataParser.py ../data/raw/eco_cov_sense.bedgraph ../data/raw/eco_cov_asense.bedgraph ../data/raw/eco_elo_sense.bedgraph ../data/raw/eco_elo_asense.bedgraph ../data/raw/eco.fa ../data/raw/eco.gtf ../data/processed/ecoli`
+`python DataParser.py ../data/raw/eco_cov_sense.bedgraph ../data/raw/eco_cov_asense.bedgraph ../data/raw/eco_elo_sense.bedgraph ../data/raw/eco_elo_asense.bedgraph ../data/raw/eco.fa ../data/processed/ecoli -g ../data/raw/eco.gff -s ATG GTG TTG -p TAA TGA TAG`
 
-`python DataParser.py ../data/raw/bac_cov_sense.bedgraph ../data/raw/bac_cov_asense.bedgraph ../data/raw/bac_elo_sense.bedgraph ../data/raw/bac_elo_asense.bedgraph ../data/raw/bac.fa ../data/raw/bac.gtf ../data/processed/bacillus`
+`python DataParser.py ../data/raw/bac_cov_sense.bedgraph ../data/raw/bac_cov_asense.bedgraph ../data/raw/bac_elo_sense.bedgraph ../data/raw/bac_elo_asense.bedgraph ../data/raw/bac.fa ../data/processed/bacillus -g ../data/raw/bac.gff`
 
-`python DataParser.py ../data/raw/sal_cov_sense.bedgraph ../data/raw/sal_cov_asense.bedgraph ../data/raw/sal_elo_sense.bedgraph ../data/raw/sal_elo_asense.bedgraph ../data/raw/sal.fa ../data/raw/sal.gtf ../data/processed/salmonella`
+`python DataParser.py ../data/raw/sal_cov_sense.bedgraph ../data/raw/sal_cov_asense.bedgraph ../data/raw/sal_elo_sense.bedgraph ../data/raw/sal_elo_asense.bedgraph ../data/raw/sal.fa ../data/processed/salmonella -g ../data/raw/sal.gff`
 
 ### Training a model
 
-`python DeepRibo.py train ../data/processed --train_data ecoli salmonella valid_size 0.05 --tr_rpkm 0.0 0.0 --tr_cov 0.0 0.0 --dest ../models/my_model.pt -b 16 --GPU`
+`python DeepRibo.py train ../data/processed --train_data ecoli salmonella --valid_size 0.3 -r 0.0 0.0 -c 0.0 0.0 --dest ../models/my_model -b 16 --GPU -v`
 
 **DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model. Notice how the flags for minimum RPKM `--tr_rpkm` and coverage `tr_cov` for the training data have listed two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
 
 ### Predicting with a model
 
-`python DeepRibo.py predict ../data/processed --pred_data bacillus -pr 0 -pc 0 --model ../models/my_model_5.pt --dest ../data/processed/bacillus/my_model_bac_pred.csv`
+`python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0 -c 0 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
+
+# Data
+
+The complete datasets used to train and evaluate DeepRibo can be retrieved [here](.). All data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
+
+# Visualization
+
+Using customized .bedgraph files it is easy to visualize the predictions of the model using a genome browser. [using a UCSC hub](http://www.kermit.ugent.be/files/gwips_hub/index.html), the predictions on each genome can be visualized at GWIPS-viz.
+
+![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/GWIPS_viz.png)
+
