@@ -282,7 +282,7 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
         GPU (bool): trains model using a GPU
     """
     train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
-                                              batch_size, num_workers, GPU, valid_size)
+                                              batch_size, num_workers, False, valid_size)
     print("{} samples in train data".format(len(train_loader.batch_sampler.sampler)))
     print("{} samples in valid data".format(len(valid_loader.batch_sampler.sampler)))
 
@@ -339,16 +339,21 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
         GPU (bool): trains model using a GPU
     """
     pred_loader = loadDatabase(data_path, pred_data, pred_cutoff, batch_size,
-                               num_workers, GPU, verbose)
+                               num_workers, GPU)
+    if GPU:
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+
     if model_type == 'CNNRNN':
         model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
-    if model_type == 'CNN':
+    elif model_type == 'CNN':
         model = CNNComplex(motif_count, nodes)
     else:
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
 
     model.load_state_dict(torch.load(model_name))
-    pred, true = model.predict(pred_loader, GPU=GPU, verbose=verbose)
+    pred, true = model.predict(device, pred_loader, GPU=GPU, verbose=verbose)
     df_pred = extendLib(pred_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 

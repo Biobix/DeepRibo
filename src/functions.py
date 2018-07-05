@@ -270,7 +270,6 @@ def extendLib(df, pred):
     df['label'] = df['label'].values.astype(bool)
     df['in_gene'] = df['in_gene'].values.astype(bool)
     df['pred'] = pred[:, 1]
-    df['gene_names'] = df.gene_names.str.lower()
     sort_idx = np.argsort(df['pred'].values)
     df.loc[sort_idx, 'pred_disc'] = np.arange(len(df))[::-1]
     SS = np.full(len(df), False)
@@ -296,7 +295,7 @@ def extendLib(df, pred):
                     dist[mask] = -1
 
     df['SS'] = SS
-    df['dist'] = dist
+    df['dist'] = dist.astype(np.int)
     SS_pred_disc = np.full(len(df), 999999, dtype=np.int)
     sort_idx = df[df['SS']].sort_values(by='pred').index.values[::-1]
     SS_pred_disc[sort_idx] = np.arange(len(df[df['SS']]))
@@ -468,7 +467,7 @@ class FitModule(Module):
             y_pred[r: min(n, r + batch_size)] = y_batch_pred
             y_true[r: min(n, r + batch_size)] = y_batch.data
             r += batch_size
-            pb.bar(b_i, log.output_metric())
+            pb.bar(b_i)
         pb.close()
 
         return y_pred, y_true
