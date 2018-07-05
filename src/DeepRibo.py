@@ -223,6 +223,8 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
     idx = np.arange(len(data.masked_list))
     dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
     labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
+    plus = len(dfs)
+    labels[data.masked_list['label'] == 1] += plus
     if valid_size != 0:
         train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
                                                 stratify=labels)
@@ -305,7 +307,7 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
     # initialize model
     if model_type == 'CNNRNN':
         model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
-    if model_type == 'CNN':
+    elif model_type == 'CNN':
         model = CNNComplex(motif_count, nodes)
     else:
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
