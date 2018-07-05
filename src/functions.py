@@ -7,7 +7,6 @@ import math
 import numpy as np
 import torch
 import json
-from torch.autograd import Variable
 from torch.optim import Optimizer
 from torch.nn import Module
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -109,6 +108,44 @@ class Adam(Optimizer):
         return loss
 
 
+class BatchSampler(object):
+    """Wraps another sampler to yield a mini-batch of indices.
+
+    Args:
+        sampler (Sampler): Base sampler.
+        batch_size (int): Size of mini-batch.
+        drop_last (bool): If ``True``, the sampler will drop the last batch if
+            its size would be less than ``batch_size``
+
+    Example:
+        >>> list(BatchSampler(range(10), batch_size=3, drop_last=False))
+        [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+        >>> list(BatchSampler(range(10), batch_size=3, drop_last=True))
+        [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+    """
+
+    def __init__(self, sampler, batch_size, drop_last):
+        self.sampler = sampler
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+
+    def __iter__(self):
+        batch = []
+        for idx in self.sampler:
+            batch.append(idx)
+            if len(batch) == self.batch_size:
+                yield batch
+                batch = []
+        if len(batch) > 0 and not self.drop_last:
+            yield batch
+
+    def __len__(self):
+        if self.drop_last:
+            return len(self.sampler) // self.batch_size
+        else:
+            return (len(self.sampler) + self.batch_size - 1) // self.batch_size
+
+
 class BucketSampler(Sampler):
     """Samples elements in buckets, bucketShuffle needs to be called every epoch.
 
@@ -123,7 +160,8 @@ class BucketSampler(Sampler):
         stops = data_source.loc[index, 'stop_site']
         self.lens = abs(starts-stops)
         self.batch_size = batch_size
-        self.sort_idx = np.argsort(self.lens)
+        self.s_idx = np.argsort(self.lens)
+        self.sort_idx = np.array(self.lens.index[self.s_idx])
         self.bucketShuffle()
 
     def __iter__(self):
