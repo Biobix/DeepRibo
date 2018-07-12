@@ -80,7 +80,7 @@ When running `Dataparser.py`, two filetypes for each ORF present in te genome ar
 
 # Training a model
 
-
+*This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are used using one of the pretrained models.*
 
 After all data has been processed, a model can be trained. Any combination of datasets present in the **DATA** folder can be used for training/testing. 
 
@@ -226,19 +226,18 @@ These code examples will work with the data present if executed sequentially. Th
 ### parsing the data
 Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
-`python DataParser.py ../data/raw/eco_cov_sense.bedgraph ../data/raw/eco_cov_asense.bedgraph ../data/raw/eco_elo_sense.bedgraph ../data/raw/eco_elo_asense.bedgraph ../data/raw/eco.fa ../data/processed/ecoli -g ../data/raw/eco.gff -s ATG GTG TTG -p TAA TGA TAG`
-
+`python DataParser.py ../data/raw/eco_cov_sense.bedgraph ../data/raw/eco_cov_asense.bedgraph ../data/raw/eco_elo_sense.bedgraph ../data/raw/eco_elo_asense.bedgraph ../data/raw/eco.fa ../data/processed/ecoli -g ../data/raw/eco.gff -s ATG GTG TTG -p TAA TGA TAG` 
 `python DataParser.py ../data/raw/bac_cov_sense.bedgraph ../data/raw/bac_cov_asense.bedgraph ../data/raw/bac_elo_sense.bedgraph ../data/raw/bac_elo_asense.bedgraph ../data/raw/bac.fa ../data/processed/bacillus -g ../data/raw/bac.gff`
 
 `python DataParser.py ../data/raw/sal_cov_sense.bedgraph ../data/raw/sal_cov_asense.bedgraph ../data/raw/sal_elo_sense.bedgraph ../data/raw/sal_elo_asense.bedgraph ../data/raw/sal.fa ../data/processed/salmonella -g ../data/raw/sal.gff`
 
 ### Training a model
 
-`python DeepRibo.py train ../data/processed --train_data ecoli salmonella --valid_size 0.3 -r 0.0 0.0 -c 0.0 0.0 --dest ../models/my_model -b 16 --GPU -v`
+`python DeepRibo.py train ../data/processed --train_data ecoli salmonella --valid_size 0.3 -r 0.27 0.27 -c 0.12 0.12 --dest ../models/my_model -b 16 --GPU -v`
 
-**DISCLAIMER** : Normally the cut-off values are not going to be 0. Including data with zero signal in the ribosome profiling data will create a bad model. Notice how the flags for minimum RPKM `--tr_rpkm` and coverage `tr_cov` for the training data have listed two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
+**DISCLAIMER** : Normally the cut-off values can be obtained using the R script. However, as not enough mock data is provided to run the script with, recommended default values are used. A link to the complete datasets is given in the section **Data**. Notice how the flags for minimum RPKM `-r` and coverage `-c` for the training data have listed two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
 
 ### Predicting with a model
 
-`python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0 -c 0 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
+`python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0.27 -c 0.12 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
 
