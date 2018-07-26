@@ -271,7 +271,7 @@ def extendLib(df, pred):
     df['in_gene'] = df['in_gene'].values.astype(bool)
     df['pred'] = pred[:, 1]
     sort_idx = np.argsort(df['pred'].values)
-    df.loc[sort_idx, 'pred_disc'] = np.arange(len(df))[::-1]
+    df.loc[sort_idx, 'pred_rank'] = np.arange(len(df))[::-1]
     SS = np.full(len(df), False)
     dist = np.zeros(len(df))
     for strand in df['strand'].unique():
@@ -296,10 +296,10 @@ def extendLib(df, pred):
 
     df['SS'] = SS
     df['dist'] = dist.astype(np.int)
-    SS_pred_disc = np.full(len(df), 999999, dtype=np.int)
+    SS_pred_rank = np.full(len(df), 999999, dtype=np.int)
     sort_idx = df[df['SS']].sort_values(by='pred').index.values[::-1]
-    SS_pred_disc[sort_idx] = np.arange(len(df[df['SS']]))
-    df['SS_pred_disc'] = SS_pred_disc
+    SS_pred_rank[sort_idx] = np.arange(len(df[df['SS']]))
+    df['SS_pred_rank'] = SS_pred_rank
 
     return df
 
@@ -314,19 +314,19 @@ def str2bool(v):
 
 
 class FitModule(Module):
-    def fit(self, device, train_loader, test_loader=None, valid_loaders=None,
-            valid_keys=None, scheduler=None, epochs=50, initial_epoch=0,
+    def fit(self, device, train_loader, valid_loader=None, test_loaders=None,
+            test_keys=None, scheduler=None, epochs=50, initial_epoch=0,
             seed=None, loss=None, optimizer=None, log=None, dest='default',
             verbose=1, GPU=False):
         '''Trains the model similar to Keras' .fit(...) method
 
         Arguments:
             train_loader (DataLoader): data loader for training
-            test_loader (DataLoader): data loader for testing
-            valid_loaders (list): list containing DataLoader objects
-                which are all used for validation at the end of an
+            valid_loader (DataLoader): data loader for validation
+            test_loaders (list): list containing DataLoader objects
+                which are all used for testing at the end of an
                 epoch of training
-            valid_keys (list): list containing labels for each of
+            test_keys (list): list containing labels for each of
                 the valid_loaders
             scheduler (object): object used for gradational decrease
                 of the learning stop during training
@@ -396,20 +396,20 @@ class FitModule(Module):
             y_pred, y_true = self.predict(device, train_loader, log=log,
                                           GPU=GPU, verbose=verbose)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
-            if test_loader is not None:
-                y_pred, y_true = self.predict(device, test_loader, loss=loss,
-                                              key='test', log=log, GPU=GPU,
+            if valid_loader is not None:
+                y_pred, y_true = self.predict(device, valid_loader, loss=loss,
+                                              key='valid', log=log, GPU=GPU,
                                               verbose=verbose)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
-                                'test')
-            if valid_loaders is not None:
-                for valid_loader, valid_key in zip(valid_loaders, valid_keys):
-                    y_pred, y_true = self.predict(device, valid_loader,
-                                                  loss=loss, key=valid_key,
+                                'valid')
+            if test_loaders is not None:
+                for test_loader, test_key in zip(test_loaders, test_keys):
+                    y_pred, y_true = self.predict(device, test_loader,
+                                                  loss=loss, key=test_key,
                                                   log=log, GPU=GPU,
                                                   verbose=verbose)
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
-                                    valid_key)
+                                    test_key)
             torch.save(self.state_dict(), '{}_{}_epoch_{}.pt'.format(dest, ts,
                                                                      t))
             with open('{}_{}_{}.json'.format(dest, ts, t), 'w') as fp:
@@ -458,43 +458,45 @@ class FitModule(Module):
             if key:
                 batch_loss = loss(y_batch_pred, y_batch)
                 log.log_loss(batch_loss.item(), key)
-            # Infer prediction shape
+            # Infer prediction shapei
             y_batch_pred = y_batch_pred.data
             if r == 0:
                 y_pred = torch.zeros((n,) + y_batch_pred.size()[1:])
                 y_true = torch.zeros((n,) + y_batch.data.size()[1:])
             # Add to prediction tensor
-            y_pred[r: min(n, r + batch_size)] = y_batch_pred
-            y_true[r: min(n, r + batch_size)] = y_batch.data
+            y_pred[r: min(n, r + batch_size)] = y_batch_pred[np.argsort(sort_order)]
+            y_true[r: min(n, r + batch_size)] = y_batch.data[np.argsort(sort_order)]
             r += batch_size
             pb.bar(b_i)
+        unbucket_idx = np.argsort(loader.batch_sampler.sampler.idx_list)
         pb.close()
 
-        return y_pred, y_true
+        return y_pred[unbucket_idx], y_true[unbucket_idx]
+        #return y_pred, y_true
 
 
 class Logger(object):
-    def __init__(self, args, metrics, test=True, valid_keys=None):
+    def __init__(self, args, metrics, valid=True, test_keys=None):
         '''Object which stores and calculates metrics produced by a neural
         network during training
 
         Attributes:
             metrics (list): lists all metrics stored during training. list can
                 include ['acc','AUC', 'loss', 'P-R']
-            test (bool): store metrics of test set (default: True)
-            valid_keys (list): list of labels for each valid_loader used during
+            valid (bool): store metrics of test set (default: True)
+            test_keys (list): list of labels for each valid_loader used during
             training
         '''
         self.i = {'train': 0}
         self.log_auc, self.log_acc, self.log_p_r = False, False, False
         self.metrics = {'train': {}}
-        if test:
-            self.metrics['test'] = {}
-            self.i['test'] = 0
-        if valid_keys is not None:
-            for valid_key in valid_keys:
-                self.metrics[valid_key] = {}
-                self.i[valid_key] = 0
+        if valid:
+            self.metrics['valid'] = {}
+            self.i['valid'] = 0
+        if test_keys is not None:
+            for test_key in test_keys:
+                self.metrics[test_key] = {}
+                self.i[test_key] = 0
         if 'acc' in metrics:
             self.log_acc = True
             for key in self.metrics:

@@ -224,7 +224,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
     labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
     plus = len(dfs)
     labels[data.masked_list['label'] == 1] += plus
-    if valid_size != 0:
+    if valid_size > 0:
         train_idx, valid_idx = train_test_split(idx, test_size=valid_size,
                                                 stratify=labels)
         valid_sampler = BucketSampler(data.masked_list, valid_idx, 256)
@@ -257,8 +257,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
 
         return train_loader
 
-
-def trainModel(args, data_path, train_data, valid_size, train_cutoff,
+def trainModel(args, data_path, train_data, valid_size, test_data, train_cutoff, test_cutoff,
                dest, batch_size, epochs, hidden_size, layers, bidirect, motif_count, nodes,
                model_type, num_workers, GPU, verbose):
     """Trains the model using DeepRibo methodology
@@ -281,8 +280,17 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
         epochs (int): training epochs (default:25)
         GPU (bool): trains model using a GPU
     """
+    if valid_size > 0:
+        valid_bool = True
+    else:
+        valid_bool = False
     train_loader, valid_loader = loadDatabase(data_path, train_data, train_cutoff,
-                                              batch_size, num_workers, False, valid_size)
+                                              batch_size, num_workers, GPU, valid_size)
+    if test_data is not None:
+        test_loader = loadDatabase(data_path, test_data, test_cutoff,
+                                   64, num_workers, GPU, 0)
+    else:
+        test_loader = None
     print("{} samples in train data".format(len(train_loader.batch_sampler.sampler)))
     print("{} samples in valid data".format(len(valid_loader.batch_sampler.sampler)))
 
@@ -305,12 +313,10 @@ def trainModel(args, data_path, train_data, valid_size, train_cutoff,
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
     scheduler = StepLR(optimizer, 10, gamma=0.1)
-    # key under which performance measures are saved
-    valid_keys = ["valid_data"]
     # record loss, accuracy, AUC, PR-AUC on test set
-    log = Logger(vars(args), ["loss", "AUC", "P-R", "acc"], False, valid_keys)
+    log = Logger(vars(args), ["loss", "AUC", "P-R", "acc"], valid_bool, test_data)
     # train the model
-    model.fit(device, train_loader, valid_loaders=[valid_loader], valid_keys=valid_keys,
+    model.fit(device, train_loader, valid_loader=valid_loader, test_loaders=[test_loader], test_keys=test_data,
               scheduler=scheduler, epochs=epochs, loss=loss,
               optimizer=optimizer, log=log, dest=dest, GPU=GPU, verbose=verbose)
 
@@ -351,7 +357,7 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
         model = CNNComplex(motif_count, nodes)
     else:
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
-
+    model.to(device)
     model.load_state_dict(torch.load(model_name))
     pred, true = model.predict(device, pred_loader, GPU=GPU, verbose=verbose)
     df_pred = extendLib(pred_loader.dataset.masked_list, pred)
@@ -387,12 +393,17 @@ class ParseArgs(object):
                                 help="path containing the data folders for "
                                 "training and testing")
             parser.add_argument('--train_data', default='[]', nargs='+',
-                                type=str, required=True, help="train data "
-                                "folder names present in the data path")
+                                type=str, required=True, help="folder names "
+                                "present in the data path used for training")
             parser.add_argument('--valid_size', type=float,
                                 default=0.05,
-                                help="percentage of train used as valid"
-                                "data")
+                                help="percentage of train data used as "
+                                "validation data, data split is stratified "
+                                "among labels and all datasets used for "
+                                "training")
+            parser.add_argument('--test_data', default=None, nargs='*',
+                                type=str, help="folder names present in "
+                                "the data path used as test data ")
             parser.add_argument('-r', '--rpkm', nargs='+', type=float,
                                 required=True,
                                 help="minimum cutoff of RPKM values to filter "
@@ -401,6 +412,13 @@ class ParseArgs(object):
                                 required=True, help="minimum cutoff of"
                                 "coverage values to filter the training data"
                                 ", these are given in the same order.")
+            parser.add_argument('-ct', '--coverage_test', nargs='*', type=float,
+                                default=None, help="minimum cutoff of"
+                                "coverage values to filter the training data"
+                                ", these are given in the same order.")
+            parser.add_argument('-rt', '--rpkm_test', nargs='*', type=float,
+                                default=None, help="minimum cutoff of RPKM values to filter "
+                                "the training data")
             parser.add_argument('-d', '--dest', default='pred', type=str,
                                 help="path to which the model is saved")
             parser.add_argument('-b', '--batch_size', type=int, default=256,
@@ -411,7 +429,7 @@ class ParseArgs(object):
                                 help="size of the hidden state of the GRU "
                                 "unit")
             parser.add_argument('-l', '--GRU_layers', default=2,
-                                choices=[1, 2], type=int, help="amount of "
+                                choices=[1, 2, 3, 4], type=int, help="amount of "
                                 "sequential GRU layers")
             parser.add_argument('-B', '--GRU_bidirect', type=str2bool, nargs='?',
                                 const=True, default=True, help="use of "
@@ -436,7 +454,9 @@ class ParseArgs(object):
             args = parser.parse_args(sys.argv[2:])
             print('Training a model with parameters: {}'.format(args))
             trainModel(args, args.data_path, args.train_data, args.valid_size,
-                       (args.rpkm, args.coverage), args.dest,
+                       args.test_data, (args.rpkm, args.coverage), (args.rpkm_test,
+                                                                    args.coverage_test),
+                       args.dest,
                        args.batch_size, args.epochs, args.GRU_nodes,
                        args.GRU_layers, args.GRU_bidirect, args.COV_motifs,
                        args.FC_nodes, args.model_type, args.num_workers,
@@ -492,10 +512,10 @@ class ParseArgs(object):
             parser.add_argument('-v', '--verbose', action='store_true', help=""
                                 "more detailed progress bar")
             args = parser.parse_args(sys.argv[2:])
-            print('Creating predictions using model {}'.format(args.model))
+            print('Creating predictions using model {}\nUsing args {}'.format(args.model, args))
             predict(args.data_path, [args.pred_data],
                     ([args.rpkm], [args.coverage]), args.model,
-                    args.dest, 1024, args.GRU_nodes, args.GRU_layers,
+                    args.dest, 512, args.GRU_nodes, args.GRU_layers,
                     args.GRU_bidirect, args.COV_motifs, args.FC_nodes,
                     args.model_type, args.num_workers, args.GPU,
                     args.verbose)
