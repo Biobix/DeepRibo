@@ -150,7 +150,7 @@ Custom architectures of DeepRibo can be trained using a variety of parameters av
  
 ### Making predictions 
 
-*This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are made using a pretrained models.*
+*This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are made using a pretrained model.*
 
 Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
 
@@ -200,20 +200,33 @@ Once a model has been trained it can be used to make predictions on any other da
 The output file is an extension of the `data_list.csv` file created when parsing the data. More information about each column is provided in the **Supplementary Information and Figures** from the [Online Article](.). In case a custom model architecture was used to train a model, it is important to give this information to the script using the related arguments.
 
 
+### Visualization
 
-## Performances
+Using `PredictToBedgraph.py`, it is possible to create .bedgraph files of the top k ranked predictions made by DeepRibo. 
 
-Coming Soon™
+`python PredictToBedgraph.py -h`
 
-## Data
+	usage: PredictToBedgraph.py [-h] [--compare] csv_path dest_path k
 
-The complete datasets used to train and evaluate DeepRibo can be retrieved [here](.). All data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
+	Create .bedgraph files of top k ranked predictions made by DeepRibo
 
-## Visualization
+	positional arguments:
+	  csv_path    Path to csv containing predictions
+	  dest_path   Path to destination, as multiple files are created, no file
+		      extension should be included
+	  k           Visualize the top k ranked predictions
 
-Using customized .bedgraph files it is easy to visualize the predictions of the model using a genome browser. [using a UCSC hub](http://www.kermit.ugent.be/files/gwips_hub/index.html), the predictions on each genome can be visualized at GWIPS-viz.
+	optional arguments:
+	  -h, --help  show this help message and exit
+	  --compare   compare predictions with annotated labels, visualizes
+		      distinction between predictions in agreement and disagreement.
+		      (only possible if --gtf flag was used when parsing dataset)
+		      (default: False)
+
+Created .bedgraph files are used to visualize the predictions of the model using a genome browser. This can be done using a local genome browser or even by [using a UCSC hub](http://www.kermit.ugent.be/files/gwips_hub/index.html). The link is an example of the visualization of annotations made by DeepRibo at GWIPS-viz.
 
 ![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/GWIPS_viz.png)
+
 
 ## Code Examples
 These code examples will work with the data present if executed sequentially. The given data is incomplete and should be considered solely for the execution of these Code Examples.
@@ -236,6 +249,11 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 ### Predicting with a model
 
 `python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0 -c 0 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
+
+
+## Data
+
+The complete datasets used to train and evaluate DeepRibo can be retrieved [here](.). All data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
 
 ## Changelog
 
