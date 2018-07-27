@@ -1,3 +1,25 @@
+#####################################
+# DeepRibo: precise gene annotation of prokaryotes using deep learning
+# and ribosome profiling data
+#
+#  Copyright (C) 2018 J. Clauwaert, G. Menschaert, W. Waegeman
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  For more (contact) information visit http://www.biobix.be/DeepRibo
+#####################################
+
 import sys
 import collections
 import re
@@ -76,7 +98,8 @@ class Adam(Optimizer):
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(p.data)
                     if amsgrad:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
+                        # Maintains max of all exp. moving avg. of sq. grad.
+                        # values
                         state['max_exp_avg_sq'] = torch.zeros_like(p.data)
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
@@ -93,7 +116,8 @@ class Adam(Optimizer):
                 exp_avg.mul_(beta1).add_(1 - beta1, grad)
                 exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                 if amsgrad:
-                    # Maintains the maximum of all 2nd moment running avg. till now
+                    # Maintains the maximum of all 2nd moment running avg. till
+                    # now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                     # Use the max. for normalizing running avg. of gradient
                     denom = max_exp_avg_sq.sqrt().add_(group['eps'])
@@ -102,7 +126,8 @@ class Adam(Optimizer):
 
                 bias_correction1 = 1 - beta1 ** state['step']
                 bias_correction2 = 1 - beta2 ** state['step']
-                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+                step_size = group['lr'] * (math.sqrt(bias_correction2) /
+                                           bias_correction1)
 
                 p.data.addcdiv_(-step_size, exp_avg, denom)
         return loss
@@ -228,7 +253,8 @@ def defaultCollate(batch):
             out = batch[0].new(storage)
 
         if pad:
-            # return torch.stack(batch, dim=0, out=out), torch.from_numpy(batch_lens)
+            # return torch.stack(batch, dim=0, out=out),
+            # torch.from_numpy(batch_lens)
             return (batch, batch_lens, sort_order)
         else:
             return torch.stack(batch, dim=0, out=out)
@@ -271,7 +297,7 @@ def extendLib(df, pred):
     df['in_gene'] = df['in_gene'].values.astype(bool)
     df['pred'] = pred[:, 1]
     sort_idx = np.argsort(df['pred'].values)
-    df.loc[sort_idx, 'pred_disc'] = np.arange(len(df))[::-1]
+    df.loc[sort_idx, 'pred_rank'] = np.arange(len(df))[::-1]
     SS = np.full(len(df), False)
     dist = np.zeros(len(df))
     for strand in df['strand'].unique():
@@ -296,10 +322,10 @@ def extendLib(df, pred):
 
     df['SS'] = SS
     df['dist'] = dist.astype(np.int)
-    SS_pred_disc = np.full(len(df), 999999, dtype=np.int)
+    SS_pred_rank = np.full(len(df), 999999, dtype=np.int)
     sort_idx = df[df['SS']].sort_values(by='pred').index.values[::-1]
-    SS_pred_disc[sort_idx] = np.arange(len(df[df['SS']]))
-    df['SS_pred_disc'] = SS_pred_disc
+    SS_pred_rank[sort_idx] = np.arange(len(df[df['SS']]))
+    df['SS_pred_rank'] = SS_pred_rank
 
     return df
 
@@ -314,19 +340,19 @@ def str2bool(v):
 
 
 class FitModule(Module):
-    def fit(self, device, train_loader, test_loader=None, valid_loaders=None,
-            valid_keys=None, scheduler=None, epochs=50, initial_epoch=0,
+    def fit(self, device, train_loader, valid_loader=None, test_loaders=None,
+            test_keys=None, scheduler=None, epochs=50, initial_epoch=0,
             seed=None, loss=None, optimizer=None, log=None, dest='default',
             verbose=1, GPU=False):
         '''Trains the model similar to Keras' .fit(...) method
 
         Arguments:
             train_loader (DataLoader): data loader for training
-            test_loader (DataLoader): data loader for testing
-            valid_loaders (list): list containing DataLoader objects
-                which are all used for validation at the end of an
+            valid_loader (DataLoader): data loader for validation
+            test_loaders (list): list containing DataLoader objects
+                which are all used for testing at the end of an
                 epoch of training
-            valid_keys (list): list containing labels for each of
+            test_keys (list): list containing labels for each of
                 the valid_loaders
             scheduler (object): object used for gradational decrease
                 of the learning stop during training
@@ -396,20 +422,20 @@ class FitModule(Module):
             y_pred, y_true = self.predict(device, train_loader, log=log,
                                           GPU=GPU, verbose=verbose)
             log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy())
-            if test_loader is not None:
-                y_pred, y_true = self.predict(device, test_loader, loss=loss,
-                                              key='test', log=log, GPU=GPU,
+            if valid_loader is not None:
+                y_pred, y_true = self.predict(device, valid_loader, loss=loss,
+                                              key='valid', log=log, GPU=GPU,
                                               verbose=verbose)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
-                                'test')
-            if valid_loaders is not None:
-                for valid_loader, valid_key in zip(valid_loaders, valid_keys):
-                    y_pred, y_true = self.predict(device, valid_loader,
-                                                  loss=loss, key=valid_key,
+                                'valid')
+            if test_loaders is not None:
+                for test_loader, test_key in zip(test_loaders, test_keys):
+                    y_pred, y_true = self.predict(device, test_loader,
+                                                  loss=loss, key=test_key,
                                                   log=log, GPU=GPU,
                                                   verbose=verbose)
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
-                                    valid_key)
+                                    test_key)
             torch.save(self.state_dict(), '{}_{}_epoch_{}.pt'.format(dest, ts,
                                                                      t))
             with open('{}_{}_{}.json'.format(dest, ts, t), 'w') as fp:
@@ -458,43 +484,45 @@ class FitModule(Module):
             if key:
                 batch_loss = loss(y_batch_pred, y_batch)
                 log.log_loss(batch_loss.item(), key)
-            # Infer prediction shape
+            # Infer prediction shapei
             y_batch_pred = y_batch_pred.data
             if r == 0:
                 y_pred = torch.zeros((n,) + y_batch_pred.size()[1:])
                 y_true = torch.zeros((n,) + y_batch.data.size()[1:])
             # Add to prediction tensor
-            y_pred[r: min(n, r + batch_size)] = y_batch_pred
-            y_true[r: min(n, r + batch_size)] = y_batch.data
+            unsort_idx = np.argsort(sort_order)
+            y_pred[r: min(n, r + batch_size)] = y_batch_pred[unsort_idx]
+            y_true[r: min(n, r + batch_size)] = y_batch.data[unsort_idx]
             r += batch_size
             pb.bar(b_i)
+        unbucket_idx = np.argsort(loader.batch_sampler.sampler.idx_list)
         pb.close()
 
-        return y_pred, y_true
+        return y_pred[unbucket_idx], y_true[unbucket_idx]
 
 
 class Logger(object):
-    def __init__(self, args, metrics, test=True, valid_keys=None):
+    def __init__(self, args, metrics, valid=True, test_keys=None):
         '''Object which stores and calculates metrics produced by a neural
         network during training
 
         Attributes:
             metrics (list): lists all metrics stored during training. list can
                 include ['acc','AUC', 'loss', 'P-R']
-            test (bool): store metrics of test set (default: True)
-            valid_keys (list): list of labels for each valid_loader used during
+            valid (bool): store metrics of test set (default: True)
+            test_keys (list): list of labels for each valid_loader used during
             training
         '''
         self.i = {'train': 0}
         self.log_auc, self.log_acc, self.log_p_r = False, False, False
         self.metrics = {'train': {}}
-        if test:
-            self.metrics['test'] = {}
-            self.i['test'] = 0
-        if valid_keys is not None:
-            for valid_key in valid_keys:
-                self.metrics[valid_key] = {}
-                self.i[valid_key] = 0
+        if valid:
+            self.metrics['valid'] = {}
+            self.i['valid'] = 0
+        if test_keys is not None:
+            for test_key in test_keys:
+                self.metrics[test_key] = {}
+                self.i[test_key] = 0
         if 'acc' in metrics:
             self.log_acc = True
             for key in self.metrics:
