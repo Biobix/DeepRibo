@@ -24,6 +24,7 @@ import sys
 import numpy as np
 import pandas as pd
 import argparse
+from argparse import ArgumentDefaultsHelpFormatter as dhf
 
 
 def predictToBedgraph(df_path, dest_path, count, compare=False):
@@ -36,9 +37,10 @@ def predictToBedgraph(df_path, dest_path, count, compare=False):
     mask_strand = df['strand'] == '-'
     df.loc[mask_strand, 'start_site'] = df.loc[mask_strand, 'start_site']+1
     df.loc[mask_strand, 'stop_site'] = df.loc[mask_strand, 'stop_site']-3
-    df.loc[mask_strand, ['start_site', 'stop_site']] = df.loc[mask_strand,
-                                                              ['stop_site',
-                                                               'start_site']].values
+    df.loc[mask_strand, ['start_site',
+                         'stop_site']] = df.loc[mask_strand,
+                                                ['stop_site',
+                                                 'start_site']].values
     df['temp'] = df['start_site']+3
     df = df.sort_values(['chrom', 'start_site'])
     mask_false = np.logical_and(df["label"] == False,
@@ -75,8 +77,9 @@ def predictToBedgraph(df_path, dest_path, count, compare=False):
             if metadata[0] not in ['_fpG.bedgraph', '_tpG.bedgraph'
                                    '_G.bedgraph']:
                 temp = df.copy()
-                temp.loc[mask_strand, 'start_site'] = df.loc[mask_strand,
-                                                             ['stop_site']].values-3
+                temp.loc[mask_strand,
+                         'start_site'] = df.loc[mask_strand,
+                                                ['stop_site']].values-3
                 temp.loc[mask_strand, 'temp'] = df.loc[mask_strand,
                                                        ['stop_site']].values
                 temp.loc[metadata[2], ['chrom', 'start_site',
@@ -84,18 +87,17 @@ def predictToBedgraph(df_path, dest_path, count, compare=False):
                                                                  header=None,
                                                                  sep="\t")
             else:
-                df.loc[metadata[2], ["chrom", "start_site",
-                                     "stop_site", 'signal']].to_csv(f,
-                                                                    index=None,
-                                                                    header=None,
-                                                                    sep="\t")
+                temp = df.loc[metadata[2], ['chrom', 'start_site',
+                                            'stop_site', 'signal']]
+                temp.to_csv(f, index=None, header=None, sep='\t')
             f.truncate()
             f.close()
+
 
 def main():
     parser = argparse.ArgumentParser(description="parse ribosome sequencing"
                                      "data into files used by DeepRibo",
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+                                     formatter_class=dhf)
     parser.add_argument('csv_path', type=str, help="Path to csv containing "
                         "predictions")
     parser.add_argument('dest_path', type=str, help="Path to destination "

@@ -98,7 +98,8 @@ class Adam(Optimizer):
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(p.data)
                     if amsgrad:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
+                        # Maintains max of all exp. moving avg. of sq. grad.
+                        # values
                         state['max_exp_avg_sq'] = torch.zeros_like(p.data)
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
@@ -115,7 +116,8 @@ class Adam(Optimizer):
                 exp_avg.mul_(beta1).add_(1 - beta1, grad)
                 exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                 if amsgrad:
-                    # Maintains the maximum of all 2nd moment running avg. till now
+                    # Maintains the maximum of all 2nd moment running avg. till
+                    # now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                     # Use the max. for normalizing running avg. of gradient
                     denom = max_exp_avg_sq.sqrt().add_(group['eps'])
@@ -124,7 +126,8 @@ class Adam(Optimizer):
 
                 bias_correction1 = 1 - beta1 ** state['step']
                 bias_correction2 = 1 - beta2 ** state['step']
-                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+                step_size = group['lr'] * (math.sqrt(bias_correction2) /
+                                           bias_correction1)
 
                 p.data.addcdiv_(-step_size, exp_avg, denom)
         return loss
@@ -250,7 +253,8 @@ def defaultCollate(batch):
             out = batch[0].new(storage)
 
         if pad:
-            # return torch.stack(batch, dim=0, out=out), torch.from_numpy(batch_lens)
+            # return torch.stack(batch, dim=0, out=out),
+            # torch.from_numpy(batch_lens)
             return (batch, batch_lens, sort_order)
         else:
             return torch.stack(batch, dim=0, out=out)
@@ -486,15 +490,15 @@ class FitModule(Module):
                 y_pred = torch.zeros((n,) + y_batch_pred.size()[1:])
                 y_true = torch.zeros((n,) + y_batch.data.size()[1:])
             # Add to prediction tensor
-            y_pred[r: min(n, r + batch_size)] = y_batch_pred[np.argsort(sort_order)]
-            y_true[r: min(n, r + batch_size)] = y_batch.data[np.argsort(sort_order)]
+            unsort_idx = np.argsort(sort_order)
+            y_pred[r: min(n, r + batch_size)] = y_batch_pred[unsort_idx]
+            y_true[r: min(n, r + batch_size)] = y_batch.data[unsort_idx]
             r += batch_size
             pb.bar(b_i)
         unbucket_idx = np.argsort(loader.batch_sampler.sampler.idx_list)
         pb.close()
 
         return y_pred[unbucket_idx], y_true[unbucket_idx]
-        #return y_pred, y_true
 
 
 class Logger(object):
