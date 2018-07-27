@@ -1,35 +1,36 @@
 # DeepRibo
 
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the prediction of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data and short DNA sequences (Shine-Dalgarno region). The package is written in python 3 using the PyTorch library. This repository contains the code necessary to train your own models. However, the weights of the six models discussed in the [Article](.) are given in `models/` and can therefore be directly used as a tool to make predictions. This package allows for the user to train their own models using custom data and custom architectures. It is strongly recommended to use GPU infrastructure for training new models using DeepRibo. 
+## Introduction
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling data and short DNA sequences (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets, as discussed in [this article](.). The pre-trained model, present in the directory `models`, can be applied to annotated any prokaryotic genome for which ribosome profiling data is available. The use of this model is the recommended procedure when applying DeepRibo for personal use. Although the models are trained making use of GPU technology, annotations made by DeepRibo should take no more than one hour of processing time in case only CPU's are available (5 min on GPU). In addition, several scripts are present which make it possible to train new models using custom data and model architecture. It is strongly recommended to use GPU infrastructure for the training of new models using DeepRibo. 
 
+
+
+## Methodology
+DeepRibo is a deep neural network applying both architectures found back in convolutional neural networks for motif detection and recurrent neural networks to process ribosome profiling signal. The model evaluates all possible ORFs (given a set of start and stop codons) with mapped reads (ribosome profiling) in the genome, assigning probabilities to assign actual ORF. A more in depth explanation about the training procedure and results are given in [this article].
 
 ![Default DeepRibo architecture](http://www.kermit.ugent.be/files/gwips_hub/DeepRibo_model.png)
 
-# Installation
+## Installation
 
 To use DeepRibo, simply clone the repository in your working directory and install the necessary python libraries:
 
 	git clone https://github.com/Biobix/DeepRibo.git
 	conda env create -f environment.yml
 
-# Changelog
-
-Recent Major features implemented include:
-
-- PyTorch libraries updated from v0.3 to v0.4
-- Implementation of custom neural network architectures
-- A custom BucketSampler class, improving training times for large dataset up to 10 times
-- Selection of start and stop triplets
 
 
-Given a typical distribution of ORFs lengths within a ribosome profiling experiment. Through bucketing, batches are created out of samples which share a similar length. When using random sampling, at least one long ORF is typically present within a batch, slowing the processing speed down significantly.
-![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/distr_lens.png)
+## Pretrained models
 
-# User Guide
+For usage, we recommend using the model trained on the combination of seven ribosome profiling datasets. This model is featured as `models/DeepRibo_model_v1.pt`
+
+All seven models discussed in the [Full Article](.) are located in `models/article/`, and can be directly used to annotate TIS/ORF using personal data. DeepRibo has been evaluated using seven different ribosome profiling experiments. To ensure overall performance, seven models were trained each time excluding one of the seven datasets for testing. These pretrained models are named by the dataset excluded from training, and therefore also the dataset from which the performance measures are obtained.
+User data has to be first parsed using `DataParser.py`. Before any predictions can be made, candidate ORFs with low signal are filtered out. To determine the cut-off values on the user data the R-script `src/s_curve_cutoff_estimation.R` is used. In case no annotation data is available (*de novo*), a conservative value of 0.12 and 0.27 can be taken for the coverage and RPKM cutoff, respectively. Finally, predictions are made by running `DeepRibo.py predict`. 
+
+## User Guide
 
 `src/DataParser.py` and `src/DeepRibo.py` are the main scripts from which all functionalities can be accessed. More information about these functions can be obtained using the `-h` flag.
 
-## Parsing Data
+### Parsing Data
 
 `python DataParser.py -h`
 
@@ -78,7 +79,7 @@ When running `Dataparser.py`, two filetypes for each ORF present in te genome ar
 
 
 
-# Training a model
+### Training a model
 
 *This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are used using one of the pretrained models.*
 
@@ -147,9 +148,9 @@ Custom architectures of DeepRibo can be trained using a variety of parameters av
 	$min_coverage
        	  ....
  
-# Making predictions 
+### Making predictions 
 
-*This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are made using a pretrained models.*
+*This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are made using a pretrained model.*
 
 Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
 
@@ -198,29 +199,36 @@ Once a model has been trained it can be used to make predictions on any other da
 
 The output file is an extension of the `data_list.csv` file created when parsing the data. More information about each column is provided in the **Supplementary Information and Figures** from the [Online Article](.). In case a custom model architecture was used to train a model, it is important to give this information to the script using the related arguments.
 
-# Pretrained models
 
-For usage, we recommend using the model trained on the combination of six ribosome profiling datasets. This model is featured as `models/DeepRibo_model_v1.pt`
+### Visualization
 
-All six models discussed in the [Full Article](.) are located in `models/article/`, and can be directly used for making predictions on personal data. DeepRibo has been evaluated using six different ribosome profiling experiments. To ensure performance, six models were trained each time excluding one of the six datasets for testing. These pretrained models are named by the dataset excluded from training, and therefore also the dataset from which the performance measures are obtained.
-User data has to be first parsed using `DataParser.py`. Before any predictions can be made, cut-off values have to be determined on the user data using the R-script `src/s_curve_cutoff_estimation.R`. In case no annotation data is available (*de novo*), a conservative value of 0.12 and 0.27 can be taken for the coverage and RPKM cutoff, respectively.
+Using `PredictToBedgraph.py`, it is possible to create .bedgraph files of the top k ranked predictions made by DeepRibo. 
 
+`python PredictToBedgraph.py -h`
 
-# Performances
+	usage: PredictToBedgraph.py [-h] [--compare] csv_path dest_path k
 
-Coming Soon™
+	Create .bedgraph files of top k ranked predictions made by DeepRibo
 
-# Data
+	positional arguments:
+	  csv_path    Path to csv containing predictions
+	  dest_path   Path to destination, as multiple files are created, no file
+		      extension should be included
+	  k           Visualize the top k ranked predictions
 
-The complete datasets used to train and evaluate DeepRibo can be retrieved [here](.). All data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
+	optional arguments:
+	  -h, --help  show this help message and exit
+	  --compare   compare predictions with annotated labels, visualizes
+		      distinction between predictions in agreement and disagreement.
+		      (only possible if --gtf flag was used when parsing dataset)
+		      (default: False)
 
-# Visualization
-
-Using customized .bedgraph files it is easy to visualize the predictions of the model using a genome browser. [using a UCSC hub](http://www.kermit.ugent.be/files/gwips_hub/index.html), the predictions on each genome can be visualized at GWIPS-viz.
+Created .bedgraph files are used to visualize the predictions of the model using a genome browser. This can be done using a local genome browser or even by [using a UCSC hub](http://www.kermit.ugent.be/files/gwips_hub/index.html). The link is an example of the visualization of annotations made by DeepRibo at GWIPS-viz.
 
 ![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/GWIPS_viz.png)
 
-# Code Examples
+
+## Code Examples
 These code examples will work with the data present if executed sequentially. The given data is incomplete and should be considered solely for the execution of these Code Examples.
 
 ### parsing the data
@@ -241,3 +249,20 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 `python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0.27 -c 0.12 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
 
+
+## Data
+
+The complete datasets used to train and evaluate DeepRibo can be retrieved [here](.). All data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
+
+## Changelog
+
+Recent Major features implemented include:
+
+- PyTorch libraries updated from v0.3 to v0.4
+- Implementation of custom neural network architectures
+- A custom BucketSampler class, improving training times for large dataset up to 10 times
+- Selection of start and stop triplets
+
+
+Given a typical distribution of ORFs lengths within a ribosome profiling experiment. Through bucketing, batches are created out of samples which share a similar length. When using random sampling, at least one long ORF is typically present within a batch, slowing the processing speed down significantly.
+![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/distr_lens.png)

@@ -95,21 +95,21 @@ def predictToBedgraph(df_path, dest_path, count, compare=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="parse ribosome sequencing"
-                                     "data into files used by DeepRibo",
-                                     formatter_class=dhf)
+    parser = argparse.ArgumentParser(description="Create .bedgraph files "
+                                     "of top k ranked predictions made by "
+                                     "DeepRibo", formatter_class=dhf)
     parser.add_argument('csv_path', type=str, help="Path to csv containing "
                         "predictions")
-    parser.add_argument('dest_path', type=str, help="Path to destination "
-                        "containing antisense riboseq data (coverage), as "
+    parser.add_argument('dest_path', type=str, help="Path to destination, as "
                         "multiple files are created, no file extension should "
                         "be included")
-    parser.add_argument('k', type=str, help="Sets the cutoff of the prediction"
-                        " probabilities as to obtain k positive predictions")
+    parser.add_argument('k', type=str, help="Visualize the top k ranked "
+                        "predictions")
     parser.add_argument('--compare', action='store_true', help="compare "
                         "predictions with annotated labels, visualizes "
                         "distinction between predictions in agreement and "
-                        "disagreement")
+                        "disagreement. (only possible if --gtf flag was used"
+                        " when parsing dataset)")
     args = parser.parse_args()
     predictToBedgraph(args.csv_path, args.dest_path, args.k, args.compare)
 
