@@ -527,7 +527,7 @@ class ParseArgs(object):
 
         def predict(self):
             parser = argparse.ArgumentParser(
-                        description='Create predictions using a trained model',
+                        description='Annotate ORFs using a pre-trained model',
                         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             parser.add_argument('data_path', type=str,
                                 help="path containing the data folders for"
