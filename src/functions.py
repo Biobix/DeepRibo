@@ -437,7 +437,7 @@ class FitModule(Module):
                     log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                     test_key)
             torch.save(self.state_dict(), '{}_{}_epoch_{}.pt'.format(dest, ts,
-                                                                     t))
+                                                                     t+1))
             with open('{}_{}_{}.json'.format(dest, ts, t), 'w') as fp:
                 json.dump(log.metrics, fp)
             log.output_metrics()
