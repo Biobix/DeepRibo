@@ -104,8 +104,8 @@ def executeFunction(ribo_cov_sense,  ribo_cov_asense, ribo_elo_sense,
     if gtf is not None:
         df_gtf = pd.read_csv(gtf, sep='\t', comment='#', header=None)
     else:
-        df_gtf = pd.read_csv('data/dummy.gtf', sep='\t', comment='#',
-                             header=None)
+        df_gtf = pd.DataFrame(np.array([['chr'], ['ena'], ['gene'], [0],
+                                        ['.'], ['+'], ['.'], ['.']]).T)
     df_CDS = df_gtf[df_gtf[2] == 'CDS']
     df_as = parseData(ribo_cov_asense, ribo_elo_asense, fasta, df_CDS,
                       dest_path, start_trips, stop_trips, asense=True)
