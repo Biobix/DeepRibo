@@ -358,13 +358,12 @@ def trainModel(args, data_path, train_data, valid_size, test_data,
         model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
     elif model_type == 'CNN':
         model = CNNComplex(motif_count, nodes)
-    else:
+    elif model_type == 'RNN':
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
     model.to(device)
-    # nn.DataParallel(model, device_ids=[2, 0])
     loss = nn.CrossEntropyLoss(weights)
     optimizer = Adam(model.parameters(), lr=0.001, amsgrad=True)
-    scheduler = StepLR(optimizer, 10, gamma=0.1)
+    scheduler = StepLR(optimizer, 9, gamma=0.1)
     # record loss, accuracy, AUC, PR-AUC on test set
     log = Logger(vars(args), ["loss", "AUC", "P-R", "acc"], valid_bool,
                  test_data)
@@ -419,7 +418,7 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
         model = DualComplex(motif_count, hidden_size, layers, bidirect, nodes)
     elif model_type == 'CNN':
         model = CNNComplex(motif_count, nodes)
-    else:
+    elif model_type == 'RNN':
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
     model.to(device)
     model.load_state_dict(torch.load(model_name))
@@ -579,7 +578,7 @@ class ParseArgs(object):
                   "Using args {}".format(args.model, args))
             predict(args.data_path, [args.pred_data],
                     ([args.rpkm], [args.coverage]), args.model,
-                    args.dest, 512, args.GRU_nodes, args.GRU_layers,
+                    args.dest, 256, args.GRU_nodes, args.GRU_layers,
                     args.GRU_bidirect, args.COV_motifs, args.FC_nodes,
                     args.model_type, args.num_workers, args.GPU,
                     args.verbose)
