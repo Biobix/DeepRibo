@@ -74,7 +74,7 @@ def predictToBedgraph(df_path, dest_path, count, compare=False):
             f.write("track type=bedGraph name='BedGraph Format'"
                     "description='BedGraph format' visibility=full"
                     "color={}\n".format(metadata[1]))
-            if metadata[0] not in ['_fpG.bedgraph', '_tpG.bedgraph'
+            if metadata[0] not in ['_fpG.bedgraph', '_tpG.bedgraph',
                                    '_G.bedgraph']:
                 temp = df.copy()
                 temp.loc[mask_strand,

@@ -428,7 +428,7 @@ class FitModule(Module):
                                               verbose=verbose)
                 log.log_metrics(y_true.cpu().numpy(), y_pred.cpu().numpy(),
                                 'valid')
-            if test_loaders is not None:
+            if test_loaders[0] is not None:
                 for test_loader, test_key in zip(test_loaders, test_keys):
                     y_pred, y_true = self.predict(device, test_loader,
                                                   loss=loss, key=test_key,

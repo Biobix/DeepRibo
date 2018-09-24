@@ -340,7 +340,7 @@ def trainModel(args, data_path, train_data, valid_size, test_data,
                                    64, num_workers, GPU, 0)
     else:
         test_loader = None
-
+    print(test_loader)
     sample_train = len(train_loader.batch_sampler.sampler)
     sample_valid = len(valid_loader.batch_sampler.sampler)
     print("{} samples in train data".format(sample_train))
