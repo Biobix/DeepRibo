@@ -260,7 +260,7 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 ## Data
 
-The complete datasets used to train and evaluate DeepRibo can be retrieved [here](.). Most data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
+The complete datasets used to train and evaluate DeepRibo can be retrieved [here](http://www.biobix.be/deepribo/). Most data has been retrieved from [GWIPS-viz](https://gwips.ucc.ie/). 
 
 ## Changelog
 
