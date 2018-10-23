@@ -1,6 +1,5 @@
 name: DeepRibo 
 channels:
-  - soumith
   - conda-forge
   - bioconda
   - defaults
@@ -8,8 +7,6 @@ dependencies:
   - gffutils=0.9=py35_0
   - ca-certificates=2017.08.26=h1d4fec5_0
   - certifi=2017.11.5=py35h9749603_0
-  - cudatoolkit=8.0=3
-  - cudnn=7.0.5=cuda8.0_0
   - dbus=1.10.22=h3b5a359_0
   - jsonschema=2.6.0=py35h4395190_0
   - libedit=3.1=heed3624_0
@@ -24,7 +21,6 @@ dependencies:
   - pip=9.0.1=py35h7e7da9d_4
   - python=3.5.4=h417fded_24
   - python-dateutil=2.6.1=py35h90d5b31_1
-  - pytorch=0.4.0=py35hd73e86b_0
   - scikit-learn=0.19.1=py35hbf1f462_0
   - setuptools=36.5.0=py35ha8c1747_0
   - simplejson=3.12.0=py35h592e862_0
@@ -33,9 +29,7 @@ dependencies:
   - sqlite=3.20.1=hb898158_2
   - statsmodels=0.8.0=py35haa9d50b_0
   - tk=8.6.7=hc745277_3
-  - torchvision=0.2.0=py35_0
   - wheel=0.30.0=py35hd3883cf_1
   - xz=5.2.3=h55aa19d_2
   - zlib=1.2.11=ha838bed_2
-  - cuda80=1.0=0
 prefix: /home/data/jclauwaert/.conda/envs/DeepRibo

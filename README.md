@@ -17,7 +17,7 @@ To use DeepRibo, simply clone the repository in your working directory and insta
 	git clone https://github.com/Biobix/DeepRibo.git
 	conda env create -f environment.yml
 
-
+Afterwards, install the pytorch version (python 3) in line with the available hardware at [www.pytorch.org](www.pytorch.org).
 
 ## Pretrained models
 
