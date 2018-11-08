@@ -243,6 +243,7 @@ These code examples will work with the data present if executed sequentially. Th
 Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 `python DataParser.py ../data/raw/eco_cov_sense.bedgraph ../data/raw/eco_cov_asense.bedgraph ../data/raw/eco_elo_sense.bedgraph ../data/raw/eco_elo_asense.bedgraph ../data/raw/eco.fa ../data/processed/ecoli -g ../data/raw/eco.gff -s ATG GTG TTG -p TAA TGA TAG` 
+
 `python DataParser.py ../data/raw/bac_cov_sense.bedgraph ../data/raw/bac_cov_asense.bedgraph ../data/raw/bac_elo_sense.bedgraph ../data/raw/bac_elo_asense.bedgraph ../data/raw/bac.fa ../data/processed/bacillus -g ../data/raw/bac.gff`
 
 `python DataParser.py ../data/raw/sal_cov_sense.bedgraph ../data/raw/sal_cov_asense.bedgraph ../data/raw/sal_elo_sense.bedgraph ../data/raw/sal_elo_asense.bedgraph ../data/raw/sal.fa ../data/processed/salmonella -g ../data/raw/sal.gff`
