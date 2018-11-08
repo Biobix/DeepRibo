@@ -4,6 +4,7 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - biopython=1.72=py35h04863e7_0
   - gffutils=0.9=py35_0
   - ca-certificates=2017.08.26=h1d4fec5_0
   - certifi=2017.11.5=py35h9749603_0
@@ -32,4 +33,3 @@ dependencies:
   - wheel=0.30.0=py35hd3883cf_1
   - xz=5.2.3=h55aa19d_2
   - zlib=1.2.11=ha838bed_2
-prefix: /home/data/jclauwaert/.conda/envs/DeepRibo

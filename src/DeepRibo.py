@@ -421,14 +421,13 @@ def predict(data_path, pred_data, pred_cutoff, model_name, dest, batch_size,
     elif model_type == 'RNN':
         model = RNNComplex(hidden_size, layers, bidirect, nodes)
     model.to(device)
-    model.load_state_dict(torch.load(model_name))
+    model.load_state_dict(torch.load(model_name, map_location=device))
     pred, true = model.predict(device, pred_loader, GPU=GPU, verbose=verbose)
     df_pred = extendLib(pred_loader.dataset.masked_list, pred)
     df_pred.to_csv(dest)
 
 
 class ParseArgs(object):
-
         def __init__(self):
             parser = argparse.ArgumentParser(
                         description='Tool for training/using models',
