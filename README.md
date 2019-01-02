@@ -17,7 +17,7 @@ To use DeepRibo, simply clone the repository in your working directory and insta
 	git clone https://github.com/Biobix/DeepRibo.git
 	conda env create -f environment.yml
 
-Afterwards, install PyTorch (python 3.5) at [www.pytorch.org](www.pytorch.org). Make sure the software installed supports the available hardware. In case PyTorch loses backwards compatibility, this package has been created using PyTorch v0.4.
+Afterwards, install PyTorch (python 3.5) at [www.pytorch.org](https://pytorch.org/get-started/locally/). Make sure the software installed supports the available hardware. In case PyTorch loses backwards compatibility, this package has been created using PyTorch v0.4.
 
 ## Pretrained models
 
@@ -231,7 +231,7 @@ Using `PredictToBedgraph.py`, it is possible to create .bedgraph files of the to
 		      (only possible if --gtf flag was used when parsing dataset)
 		      (default: False)
 
-Created .bedgraph files are used to visualize the predictions of the model using a genome browser. This can be done using a local genome browser or even by [using a UCSC hub](http://www.kermit.ugent.be/files/gwips_hub/index.html). The link is an example of the visualization of annotations made by DeepRibo at GWIPS-viz.
+Created .bedgraph files are used to visualize the predictions of the model using a genome browser. This can be done using a local genome browser or even by using a UCSC hub. Annotations curated by DeepRibo to evaluate its performance can be browsed [here](http://www.kermit.ugent.be/files/gwips_hub/index.html). It is an example of how the annotations can be visualized using the hubs at GWIPS-viz.
 
 ![GWIPS-viz](http://www.kermit.ugent.be/files/gwips_hub/GWIPS_viz.png)
 
