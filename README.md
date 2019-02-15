@@ -1,10 +1,14 @@
 # DeepRibo
 
 ## Introduction
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling signal and binding site patterns (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets, as discussed in 
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling signal and binding site patterns (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets. More information is available in the published article:
+ 
 >[DeepRibo: A deep neural network for the precise gene annotation of prokaryotes by combining ribosome profiling signal and binding site patterns](https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkz061/5310036)
+
 >Jim Clauwaert, Gerben Menschaert, Willem Waegeman
+
 >Nucleic Acids Research 2019
+
 The pre-trained model, present in the directory `models`, can be applied to annotate any prokaryotic genome for which ribosome profiling data is available. The use of this model is the recommended procedure when applying DeepRibo for personal use. Although the models are trained making use of GPU technology, annotations made by DeepRibo should take no more than two hours of processing time in case computations are done by CPU's (~10 minutes on GPU). In addition, several scripts are present which make it possible to train new models using custom data and model architecture. It is strongly recommended to use GPU infrastructure for the training of new models using DeepRibo. 
 
 
