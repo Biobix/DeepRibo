@@ -1,7 +1,6 @@
 # DeepRibo
 
-## Introduction
-DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling signal and binding site patterns (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets. More information is available in the published article:
+## Introduction DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling signal and binding site patterns (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets. More information is available in the published article:
  
 >[DeepRibo: A deep neural network for the precise gene annotation of prokaryotes by combining ribosome profiling signal and binding site patterns](https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkz061/5310036)
 
@@ -40,10 +39,11 @@ User data has to be first parsed using `DataParser.py`. Before any predictions c
 
 ### Data Preparation
 
-First, data has to be converted into the required format. `DataParser.py` takes care of this with minimal effort. Several files are required to successfully parse the data. In short, the ribosome profiling data of elongating ribosomes has to be compiled into four bedgraph files. These contain the coverage signals of all reads and the mapped A/P profiles (reads mapped to one site). The following steps are performed: 
-	- read adapters are trimmed 
-	- rRNA sequences are filtered out and only uniquely mapped reads are used 
-	- a 12nt offset from the 3' end of the read is used to map reads to a single position on the genome.
+First, data has to be converted into the required format. `DataParser.py` takes care of this with minimal effort. Several files are required to successfully parse the data. In short, the ribosome profiling data of elongating ribosomes has to be compiled into four bedgraph files. These contain the coverage signals of all reads and the mapped A/P profiles (reads mapped to one site). The following steps are performed:
+
+- read adapters are trimmed 
+- rRNA sequences are filtered out and only uniquely mapped reads are used 
+- a 12nt offset from the 3' end of the read is used to map reads to a single position on the genome.
 
 ### Parsing Data
 
@@ -165,8 +165,6 @@ During training, the model's weights are saved after each epoch in the destinati
 Custom architectures of DeepRibo can be trained using a variety of parameters available when running `DeepRibo.py`. Specifically, `--GRU_nodes`, `--GRU_layers`, `--GRU_bidirect`, `--COV_motifs` and `--FC_nodes` can be used to set the hidden nodes of the GRU memory cell, the amount of layers, whether to use a bidirectional GRU, the amount of kernels used by the convolutional layer, and the amount of layers and nodes used in the fully connected layers of DeepRibo. The model type can be set using `--model_type`, making it possible to train a model using only the CNN or RNN partition of DeepRibo. Default values constitute the hyperparameters used to build the provided models.
 
 ### Making predictions 
-
-*This step is only necessary to train a custom model. For default usage of DeepRibo, predictions are made using a pretrained model.*
 
 Once a model has been trained it can be used to make predictions on any other data you have parsed. For more information about the required parameters simply use the help flag:
 
