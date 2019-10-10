@@ -1,6 +1,7 @@
 # DeepRibo
 
-## Introduction DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling signal and binding site patterns (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets. More information is available in the published article:
+## Introduction 
+DeepRibo is a deep neural network created by Clauwaert. J et. al. for the annotation of Open Reading Frames (ORF) in prokaryotes using ribosome profiling signal and binding site patterns (Shine-Dalgarno region). The package is written in python 3 and uses the PyTorch library for deep learning purposes. A model has been trained and evaluated using seven ribo-seq datasets. More information is available in the published article:
  
 >[DeepRibo: A deep neural network for the precise gene annotation of prokaryotes by combining ribosome profiling signal and binding site patterns](https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkz061/5310036)
 
