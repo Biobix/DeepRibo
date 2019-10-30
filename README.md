@@ -212,7 +212,14 @@ Once a model has been trained it can be used to make predictions on any other da
 	  -v, --verbose         more detailed progress bar (default: False)
 
 
-The output file is an extension of the `data_list.csv` file created when parsing the data. More information about each column is provided in the [Supplementary Information and Figures](https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkz061/5310036). In case a custom model architecture was used to train a model, it is important to give this information to the script using the related arguments.
+The output file is an extension of the `data_list.csv` file created when parsing the data. Only the five last columns hold information regarding the output of the model.
+
+- pred: The output of the model, the logits equal the output probability after application of the sigmoid transform.  - pred_rank: rank of the ORFs based on the output of the model (listed by the previous column 'pred')
+- SS: Boolean indicating whether the ORF is the highest ranked ORF for a given stop site
+- dist: Distance to annotated ORF (only if annotations were given when parsing the data, all columns are given -1 if not)
+- SS_pred_rank: rank of the ORFs in a setting were multiple start sites for a given stop site is **NOT** allowed. Hence, only the ORFs having the highest rank for a given stop site are compared, as shown in 'SS'. (999999 is the index given to invalid ORFs)  
+
+More information about each column is provided in the [Supplementary Information and Figures](https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkz061/5310036). In case a custom model architecture was used to train a model, it is important to give this information to the script using the related arguments.
 
 
 ### Visualization
