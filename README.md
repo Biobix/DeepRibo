@@ -23,9 +23,17 @@ DeepRibo is a deep neural network applying both architectures from convolutional
 To use DeepRibo, simply clone the repository in your working directory and install the necessary python libraries:
 
 	git clone https://github.com/Biobix/DeepRibo.git
-	conda env create -f environment.yml
-
-Afterwards, install PyTorch (python 3.5) at [www.pytorch.org](https://pytorch.org/get-started/locally/). Make sure the software installed supports the available hardware. In case PyTorch loses backwards compatibility, this package has been created using PyTorch v0.4.
+	
+DeepRibo uses following packages for Python 3.8:
+	
+```
+	numpy
+	pandas
+	scikit-learn
+	biopython
+	pytorch
+```
+Install PyTorch at [www.pytorch.org](https://pytorch.org/get-started/locally/). Make sure the software installed supports the available hardware. In case PyTorch loses backwards compatibility, this package has been created using PyTorch v0.4 and has been successfully tested up to PyTorch 1.4.
 
 ## Pretrained models
 
@@ -265,13 +273,13 @@ Parsing *E. coli*, *B. subtilis* and *S. typhimurium* data:
 
 ### Training a model
 
-`python DeepRibo.py train ../data/processed --train_data ecoli salmonella --valid_size 0.3 -r 0.27 0.24 -c 0.12 0.11 --dest ../models/my_model -b 16 --GPU -v`
+`python DeepRibo.py train ../data/processed --train_data ecoli salmonella --valid_size 0.3 -r 0 0 -c 0 0 --dest ../models/my_model -b 16 --GPU -v`
 
-**DISCLAIMER** : Normally the cut-off values can be obtained using the R script. However, as not enough mock data is provided to run the script with, recommended default values are used. A link to the complete datasets is given in the section **Data**. Notice how the flags for minimum RPKM `-r` and coverage `-c` for the training data have listed two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
+**DISCLAIMER** : Normally the cut-off values can be obtained using the R script. Due to the small amount of mock data `-r` and `-c` are set at 0. In general, values are expected to be around `-r 0.27 -c 0.12`. A link to the complete datasets is given in the section **Data**. The flags for minimum RPKM `-r` and coverage `-c` have been given two sequential values, each given for the dataset listed by `--train_data` according to their shared order.
 
 ### Predicting with a model
 
-`python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0.23 -c 0.10 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
+`python DeepRibo.py predict ../data/processed --pred_data bacillus -r 0.0 -c 0.0 --model ../models/{MODEL NAME} --dest ../data/processed/bacillus/my_model_bac_pred.csv`
 
 
 ## Data
@@ -282,7 +290,11 @@ The complete datasets used to train and evaluate DeepRibo can be retrieved [here
 
 Recent Major features implemented include:
 
+- Updated code to work with Pytorch 1.4
+- Added release tag
+
 - PyTorch libraries updated from v0.3 to v0.4
+
 - Implementation of custom neural network architectures
 - A custom BucketSampler class, improving training times for large dataset up to 8 times
 - Selection of start and stop triplets

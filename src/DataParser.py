@@ -199,7 +199,7 @@ def parseData(RIBO_cov, RIBO_elo, fasta, df_CDS, dest_path,
 
             seq_img = np.zeros((4, WIN_SIZE, 1))
             for j, nt in enumerate(seq):
-                if nt is not "N":
+                if nt != "N":
                     seq_img[seq_dict[nt], j, 0] = 1
             if asense:
                 f_start = len(chrom)-start+1

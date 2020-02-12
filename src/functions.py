@@ -33,7 +33,6 @@ from torch.optim import Optimizer
 from torch.nn import Module
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data.dataloader import numpy_type_map
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data.sampler import Sampler
 
@@ -226,6 +225,16 @@ def defaultCollate(batch):
     https://pytorch.org/docs/master/_modules/torch/utils/data/dataloader.html#DataLoader
     and tweaked for personal use'''
 
+    numpy_type_map = {
+             'float64': torch.DoubleTensor,
+             'float32': torch.FloatTensor,
+             'float16': torch.HalfTensor,
+             'int64': torch.LongTensor,
+             'int32': torch.IntTensor,
+             'int16': torch.ShortTensor,
+             'int8': torch.CharTensor,
+             'uint8': torch.ByteTensor,
+         }
     error_msg = 'batch must contain tensors, numbers, dicts or lists; found {}'
     _use_shared_memory = True
     string_classes = (str, bytes)
@@ -387,7 +396,7 @@ class FitModule(Module):
         opt = optimizer
         # Run training loop
         for t in range(initial_epoch, epochs):
-            if scheduler:
+            if scheduler and t!= initial_epoch:
                 scheduler.step()
             print('Epoch {0} / {1}'.format(t+1, epochs))
             # Setup Logger

@@ -254,6 +254,7 @@ def loadDatabase(data_path, data, cutoff, batch_size, num_workers, pin_memory,
     data = CustomLoader(data_path, data, cutoff)
     idx = np.arange(len(data.masked_list))
     dfs = data.masked_list.iloc[:, 0].str.split('/').str[0].value_counts()
+    # labels are subdivided per genome database to stratify labels of organisms
     labels = np.hstack([np.full(x, i) for i, x in enumerate(dfs.values)])
     plus = len(dfs)
     labels[data.masked_list['label'] == 1] += plus
