@@ -585,4 +585,4 @@ class ParseArgs(object):
 
 
 if __name__ == "__main__":
-    sys.exit(ParseArgs())
+    ParseArgs()
