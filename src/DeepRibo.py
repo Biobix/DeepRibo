@@ -538,7 +538,7 @@ class ParseArgs(object):
                                 required=True, help="minimum cutoff of RPKM "
                                 "value to filter the data used for "
                                 "predictions.")
-            parser.add_argument('-c', '--coverage', nargs='+', type=float,
+            parser.add_argument('-c', '--coverage', type=float,
                                 required=True, help="minimum cutoff of "
                                 "coverage value to filter the data used for "
                                 "predictions order")
