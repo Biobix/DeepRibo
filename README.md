@@ -54,6 +54,8 @@ First, data has to be converted into the required format. `DataParser.py` takes 
 - rRNA sequences are filtered out and only uniquely mapped reads are used 
 - a 12nt offset from the 3' end of the read is used to map reads to a single position on the genome.
 
+Transforming mapped reads from a `.bam` format to a `.bedgraph` format can be achieved using [bedtools genomecov](https://bedtools.readthedocs.io/en/latest/content/tools/genomecov.html)
+
 ### Parsing Data
 
 `python DataParser.py -h`
